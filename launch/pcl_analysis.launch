@@ -1,0 +1,9 @@
+<launch>
+
+    <arg name="point_cloud_topic" default="/velodyne_points"/>
+
+    <node pkg="pcl_analysis" type="pcl_analysis_node" respawn="false" name="pcl_analysis" output="screen">
+        <param name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
+    </node>
+
+</launch>
