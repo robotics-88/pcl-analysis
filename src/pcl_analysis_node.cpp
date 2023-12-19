@@ -17,6 +17,9 @@ int main(int argc, char** argv)
   PCLAnalysis pcl_analysis(node);
 
   ros::spin();
+  /* ros::AsyncSpinner spinner(6);
+  spinner.start();
+  ros::waitForShutdown(); */
 
   return 0;
 }

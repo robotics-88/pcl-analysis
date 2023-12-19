@@ -5,6 +5,11 @@
     <node pkg="pcl_analysis" type="pcl_analysis_node" respawn="false" name="pcl_analysis" output="screen">
         <param name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
         <param name="segment_distance_threshold" value="0.1"/>
+        <param name="voxel_grid_leaf_size" value="0.25"/>
+        <param name="pmf_max_window_size" value="2"/>
+        <param name="pmf_slope" value="0.5"/>
+        <param name="pmf_initial_distance" value="0.25"/>
+        <param name="pmf_max_distance" value="1.0"/>
     </node>
 
 </launch>
