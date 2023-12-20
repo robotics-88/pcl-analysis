@@ -23,6 +23,8 @@ class PCLAnalysis {
 
         void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
+        void timerCallback(const ros::TimerEvent&);
+
     private: 
         ros::NodeHandle nh_;
         ros::NodeHandle private_nh_;
@@ -33,7 +35,13 @@ class PCLAnalysis {
         ros::Publisher cloud_ground_pub_;
         ros::Publisher cloud_nonground_pub_;
 
+        ros::Timer timer_;
+
+        // Main input pointcloud holder
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_;
+
         // Params
+        double  pub_rate_;
         double  segment_distance_threshold_;
         float   voxel_grid_leaf_size_;
         int     pmf_max_window_size_;

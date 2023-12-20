@@ -3,6 +3,7 @@
     <arg name="point_cloud_topic" default="/velodyne_points"/>
 
     <node pkg="pcl_analysis" type="pcl_analysis_node" respawn="false" name="pcl_analysis" output="screen">
+        <param name="pub_rate" value="2.0"/>
         <param name="point_cloud_topic" value="$(arg point_cloud_topic)"/>
         <param name="segment_distance_threshold" value="0.1"/>
         <param name="voxel_grid_leaf_size" value="0.25"/>
