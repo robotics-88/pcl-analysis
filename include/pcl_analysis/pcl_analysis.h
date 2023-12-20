@@ -38,7 +38,7 @@ class PCLAnalysis {
         ros::Timer timer_;
 
         // Main input pointcloud holder
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_{new pcl::PointCloud<pcl::PointXYZ>()};
 
         // Params
         double  pub_rate_;
