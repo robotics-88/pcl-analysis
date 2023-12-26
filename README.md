@@ -12,6 +12,7 @@ Subscribes to a point cloud topic, does processing on that point cloud, and publ
 `/cloud_nonground`<sensor_msgs::PointCloud2>: Inverse of cloud_ground - only includes non-ground points (trees, objects, etc).
 
 ## Parameters
+`pub_rate`: Loop rate for processing and publication, in hz. Higher rate increases CPU usage proportionally up to maximum rate (which is same rate that point_cloud_topic gets published).
 
 `point_cloud_topic`: Rostopic name for input pointcloud.
 
