@@ -108,6 +108,14 @@ void PCLAnalysis::segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 
 }
 
+void PCLAnalysis::segment_cylinders(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cylinders,
+                                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_noncylinders) {
+
+
+
+                                          }
+
 void PCLAnalysis::pmf_ground_extraction(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground,
                                        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground) {

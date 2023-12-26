@@ -54,6 +54,10 @@ class PCLAnalysis {
                                  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane,
                                  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonplane);
 
+        void segment_cylinders(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cylinders,
+                                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_noncylinders);
+
         // Runs a PMF filter to extract ground points based on pmf_* params
         void pmf_ground_extraction(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                          pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground,
