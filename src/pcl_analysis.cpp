@@ -50,6 +50,12 @@ PCLAnalysis::PCLAnalysis(ros::NodeHandle& node)
 PCLAnalysis::~PCLAnalysis(){}
 
 void PCLAnalysis::timerCallback(const ros::TimerEvent&) {
+
+    // Make sure we have recent pointcloud to work with
+    ros::Time last_cloud_stamp;
+    pcl_conversions::fromPCL(cloud_latest_->header.stamp, last_cloud_stamp);
+    double seconds_since_last_cloud = (ros::Time::now() - last_cloud_stamp).toSec();
+    if (seconds_since_last_cloud > 1.0/pub_rate_) {return;}
     
     // Downsample cloud for processing
     voxel_grid_filter(cloud_latest_, voxel_grid_leaf_size_);
