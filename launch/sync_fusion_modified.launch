@@ -1,0 +1,7 @@
+<launch>
+        <node pkg="pcl_analysis" type="color_pc_sync_modified_node" name="color_pc_sync_modified_node" args="false" output="screen">
+		<rosparam file="$(find pcl_analysis)/config/param_new_1.yaml" command="load"/>	
+	        <remap from="/livox_repub" to="/livox/lidar" />	        
+	</node>
+	<node pkg="rviz" type="rviz" name="rviz_color_pc_sync" args="-d $(find pcl_analysis)/config/show_color.rviz" required="true" />
+</launch>
