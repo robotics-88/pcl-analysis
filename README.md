@@ -21,3 +21,13 @@ Subscribes to a point cloud topic, does processing on that point cloud, and publ
 `pmf_max_window_size`: Maximum window size on the PMF filter. Increase for more accurate/robust filtering, decrease for faster processing. 
 
 `pmf_slope`: Slope of PMF used for computing height threshold for filtered height.
+
+# color-projection
+ROS node for projecting colors from an image to its corresponding point cloud.
+
+## Description
+Subscribes to both the pointcloud2 and the image topics and takes in the intrinsic and extrinsic parameters from the param.yml files. Using these matrices, the transformation matrix is calculated between the image and the pointcloud. The FOV of the pointcloud is set based on the FOV of the image. Using the computed transformation matrix, the colors are projected from the image to its corresponding point in the pointcloud.
+
+To run this color projection node:
+
+`roslaunch pcl_analysis sync_fusion_modified.launch`
