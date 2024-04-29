@@ -31,3 +31,5 @@ Subscribes to both the pointcloud2 and the image topics and takes in the intrins
 To run this color projection node:
 
 `roslaunch pcl_analysis sync_fusion_modified.launch`
+
+Reference repo for the color projection node is: `https://github.com/GCaptainNemo/Fusion-Lidar-Camera-ROS/tree/main`
