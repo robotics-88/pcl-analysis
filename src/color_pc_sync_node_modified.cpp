@@ -14,9 +14,6 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-#include <pcl/visualization/cloud_viewer.h>
-#include <pthread.h>
-
 
 // ///////////////////////////////////////////////////////////////////////
 // topic: /livox/color_lidar
@@ -53,25 +50,6 @@ message_filters::Subscriber<sensor_msgs::Image> * image_sync_sub;
 message_filters::Subscriber<sensor_msgs::PointCloud2> * livox_sync_sub;
 message_filters::Synchronizer<syncPolicy> *sync_;
 
-void visualizePointCloud(const pcl::PointCloud<PointType>::Ptr& cloud) {
-    // Create a PCL visualizer
-    pcl::visualization::PCLVisualizer viewer("Point Cloud Viewer");
-
-    // Add the point cloud to the viewer
-    viewer.addPointCloud(cloud, "cloud");
-
-    // Set the background color
-    viewer.setBackgroundColor(0.0, 0.0, 0.0);
-
-    // Set camera position and orientation
-    viewer.setCameraPosition(0.0, 0.0, 2.0, 0.0, 0.0, 0.0);
-
-    // Spin the viewer
-    while (!viewer.wasStopped()) {
-        viewer.spinOnce();
-    }
-}
-
 class ImageLivoxFusion
 {
 public:
@@ -106,10 +84,11 @@ public:
     // ////////////////////////////////////////////////////////////////////////////////////////////
 
     image_sub = it.subscribe("/mapir_rgn/image_raw", 100, &ImageLivoxFusion::imageCallback, this);
-    livox_sub = nh.subscribe("/livox/lidar", 100, &ImageLivoxFusion::livoxCallback, this);
-   
+    // livox_sub = nh.subscribe("/livox/lidar", 100, &ImageLivoxFusion::livoxCallback, this);
+
+    // TODO replace sub raw/pub rectified with synced to raw and rectify it in the synced callback
     image_sync_pub = it.advertise("/hik_cam_node/undist_camera", 10);
-    livox_sync_pub = nh.advertise<sensor_msgs::PointCloud2>("livox/lidar_sync", 10);
+    // livox_sync_pub = nh.advertise<sensor_msgs::PointCloud2>("livox/lidar_sync", 10);
     livox_pub = nh.advertise<sensor_msgs::PointCloud2>("livox/color_lidar", 10);
 
     // ////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,11 +96,9 @@ public:
     // ////////////////////////////////////////////////////////////////////////////////////////////
 
     image_sync_sub = new message_filters::Subscriber<sensor_msgs::Image> (nh, "/hik_cam_node/undist_camera",1);
-    livox_sync_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2> (nh, "livox/lidar_sync",1);
+    livox_sync_sub = new message_filters::Subscriber<sensor_msgs::PointCloud2> (nh, "livox/lidar",1);
     // multi sensor synchronized
     sync_ = new message_filters::Synchronizer<syncPolicy> (syncPolicy(10), *image_sync_sub, *livox_sync_sub);
-    // image_pub = it.advertise("/hik_cam_node/undist_camera", 10);    
-    // livox_pub = nh.advertise<sensor_msgs::PointCloud2>("livox/color_lidar", 10);
     sync_->registerCallback(boost::bind(&ImageLivoxFusion::integral_callback, this, _1, _2));
     ROS_INFO("START LISTENING\n");
   };
@@ -130,7 +107,6 @@ public:
   {
   };
     void set_param();
-    void livoxCallback(const sensor_msgs::PointCloud2Ptr & msg);
     void imageCallback(const sensor_msgs::ImageConstPtr& msg);
     void integral_callback(const sensor_msgs::ImageConstPtr &img_msg, const sensor_msgs::PointCloud2ConstPtr &pc_msg);
 };
@@ -212,14 +188,6 @@ void ImageLivoxFusion::set_param()
   this->transform_matrix = Int * this->extrinsic_matrix;
 }
 
-void ImageLivoxFusion::livoxCallback(const sensor_msgs::PointCloud2Ptr & msg)
-{
-    msg->header.stamp = ros::Time::now();
-    livox_sync_pub.publish(*msg);
-
-}
-
-
 void ImageLivoxFusion::imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     // image correction
@@ -244,7 +212,7 @@ void ImageLivoxFusion::imageCallback(const sensor_msgs::ImageConstPtr& msg)
     }
     linshi_msg = cv_ptr->toImageMsg();
     //linshi_msg = cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, resized_image).toImageMsg();
-    linshi_msg->header.stamp = ros::Time::now();
+    linshi_msg->header.stamp = msg->header.stamp;
     image_sync_pub.publish(linshi_msg);
 
   }
@@ -254,7 +222,7 @@ void ImageLivoxFusion::integral_callback(const sensor_msgs::ImageConstPtr &img_m
                                           const sensor_msgs::PointCloud2ConstPtr &pc_msg)
 {
 
-    // ROS_INFO("in call back");
+    ROS_INFO("in call back");
     try
     {
         cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
@@ -265,10 +233,7 @@ void ImageLivoxFusion::integral_callback(const sensor_msgs::ImageConstPtr &img_m
         return;
     }
     cv::Mat image_color = cv_ptr->image;
-    //blue image to check the color projections:
-    cv::Mat image_blue = image_color.clone(); // Make a copy of the original image
-    // Set all pixel values to blue
-    image_blue.setTo(cv::Scalar(255, 0, 0));
+
     pcl::PointCloud<pcl::PointXYZI>::Ptr raw_pcl_ptr(new pcl::PointCloud<pcl::PointXYZI>); 
     pcl::fromROSMsg(*pc_msg, *raw_pcl_ptr);
     const int size = raw_pcl_ptr->points.size();
@@ -295,7 +260,6 @@ void ImageLivoxFusion::integral_callback(const sensor_msgs::ImageConstPtr &img_m
             pointRGB.r = image_color.at<cv::Vec3b>(row, column)[2];
             pointRGB.g = image_color.at<cv::Vec3b>(row, column)[1];
             pointRGB.b = image_color.at<cv::Vec3b>(row, column)[0];
-            ROS_INFO("Red: %d, Green: %d, Blue: %d", pointRGB.r, pointRGB.g, pointRGB.b);
             //pointRGB.intensity = linshi_raw_pcl_ptr->points[i].intensity; //继承之前点云的intensity
             pc_xyzrgb->push_back(pointRGB);
             }
@@ -307,8 +271,9 @@ void ImageLivoxFusion::integral_callback(const sensor_msgs::ImageConstPtr &img_m
     sensor_msgs::PointCloud2 colored_msg; 
     pcl::toROSMsg(*pc_xyzrgb,  colored_msg);  // 将点云转化为ROS消息发布
     colored_msg.header.frame_id = "livox_frame";
-    colored_msg.header.stamp = ros::Time::now(); 
+    colored_msg.header.stamp = pc_msg->header.stamp;
     livox_pub.publish(colored_msg); 
+    ROS_INFO("finished cb");
 }
 
 int main(int argc, char** argv)
