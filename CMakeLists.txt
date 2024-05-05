@@ -8,9 +8,12 @@ project(pcl_analysis)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
+  image_transport
   roscpp
   std_msgs
   pcl_ros
+  sensor_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -103,11 +106,15 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include
+#  INCLUDE_DIRS include
 #  LIBRARIES pcl-analysis
 #  CATKIN_DEPENDS roscpp std_msgs
 #  DEPENDS system_lib
 )
+find_package(OpenCV REQUIRED)
+find_package(PCL REQUIRED)
+include_directories(include ${OpenCV_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
+link_directories(${OpenCV_LIB_DIR} ${PCL_LIB_DIR})
 
 ###########
 ## Build ##
@@ -119,6 +126,10 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
 )
+
+#Color projection pkgs
+add_executable(color_pc_sync_modified_node src/color_pc_sync_node_modified.cpp)
+target_link_libraries(color_pc_sync_modified_node ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} )
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}

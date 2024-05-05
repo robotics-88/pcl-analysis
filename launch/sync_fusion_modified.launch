@@ -1,0 +1,17 @@
+<launch>
+    <arg name="camera_name" default="mapir_rgn"/>
+
+	<param name="/use_sim_time" value="true"/>
+
+	<node pkg="pcl_analysis" type="color_pc_sync_modified_node" name="color_pc_sync_modified_node" args="false" output="screen">
+		<rosparam file="$(find pcl_analysis)/config/param_rgb.yaml" command="load"/>
+		<remap from="/livox/lidar" to="/cloud_registered_lidar" />
+		<!-- <remap from="/mapir_rgn/image_raw" to="/mapir_rgn/image_rect_color" /> -->
+	</node>
+
+	<!-- <group ns="$(arg camera_name)">
+        <node pkg="image_proc" type="image_proc" name="image_proc"/>
+    </group> -->
+
+	<node pkg="rviz" type="rviz" name="rviz_color_pc_sync" args="-d $(find pcl_analysis)/config/show_color.rviz" required="true" />
+</launch>
