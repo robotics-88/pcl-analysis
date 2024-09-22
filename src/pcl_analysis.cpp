@@ -88,8 +88,9 @@ void PCLAnalysis::timerCallback() {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
     pmf_ground_extraction(cloud_latest_, cloud_ground, cloud_nonground);
 
+    // Cluster ground returns to find the trail
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZRGB>());
-    findTrail(cloud_latest_, cloud_clustered);
+    findTrail(cloud_ground, cloud_clustered);
 
     // Convert to ROS msg and publish
     sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
@@ -119,7 +120,7 @@ void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
     ec.setClusterTolerance(1.0); // Adjust tolerance as necessary
     ec.setMinClusterSize(50); // Minimum number of points to form a cluster
-    ec.setMaxClusterSize(25000); // Maximum number of points to form a cluster
+    // ec.setMaxClusterSize(25000); // Maximum number of points to form a cluster
     ec.setSearchMethod(tree);
     ec.setInputCloud(cloud);
     ec.extract(cluster_indices);
