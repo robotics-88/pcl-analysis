@@ -6,36 +6,36 @@ Author: Gus Meyer <gus@robotics88.com>
 #ifndef PCL_ANALYSIS_H_
 #define PCL_ANALYSIS_H_
 
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
 
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_ros/point_cloud.h>
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include <pcl/point_cloud.h>
+#include "pcl/point_types.h"
+#include "pcl_conversions/pcl_conversions.h"
 
 /**
  * @class PCLAnalysis
  * @brief A class for analyzing and segmenting point clouds
  */
-class PCLAnalysis {
+class PCLAnalysis : public rclcpp::Node {
 
     public:
-        PCLAnalysis(ros::NodeHandle& node);
+        PCLAnalysis();
         ~PCLAnalysis();
 
-        void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &msg);
+        void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
-        void timerCallback(const ros::TimerEvent&);
+        void timerCallback();
 
     private: 
-        ros::NodeHandle nh_;
-        ros::NodeHandle private_nh_;
 
         std::string     point_cloud_topic_;
-        ros::Subscriber point_cloud_subscriber_;
+        rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
 
-        ros::Publisher cloud_ground_pub_;
-        ros::Publisher cloud_nonground_pub_;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_ground_pub_;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_nonground_pub_;
 
-        ros::Timer timer_;
+        rclcpp::TimerBase::SharedPtr timer_;
 
         // Main input pointcloud holder
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_{new pcl::PointCloud<pcl::PointXYZ>()};

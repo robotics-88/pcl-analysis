@@ -7,16 +7,14 @@ Author: Gus Meyer <gus@robotics88.com>
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "pcl_analysis");
-  if (ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME,
-                                     ros::console::levels::Debug)) {
-    ros::console::notifyLoggerLevelsChanged();
-  }
+  rclcpp::init(argc, argv);
 
-  ros::NodeHandle node;
-  PCLAnalysis pcl_analysis(node);
+  auto tm_node = std::make_shared<PCLAnalysis>();
 
-  ros::spin();
-
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(tm_node);
+  executor.spin();
+  
+  rclcpp::shutdown();
   return 0;
 }

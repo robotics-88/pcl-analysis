@@ -10,9 +10,9 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
+find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(pcl_ros REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 ## System dependencies are found with CMake's conventions
@@ -48,9 +48,14 @@ add_executable(${PROJECT_NAME}_node src/pcl_analysis_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-ament_target_dependencies(${PROJECT_NAME}_node 
+ament_target_dependencies(${PROJECT_NAME}
   pcl_ros
+  rclcpp
   sensor_msgs
+)
+
+target_link_libraries(${PROJECT_NAME}
+	${PCL_LIBRARIES}
 )
 
 ## Specify libraries to link a library or executable target against
