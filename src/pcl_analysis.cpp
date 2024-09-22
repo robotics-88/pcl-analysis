@@ -12,11 +12,13 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/filters/voxel_grid.h>
 
 #include <pcl/segmentation/progressive_morphological_filter.h>
+#include <pcl/segmentation/extract_clusters.h>
 
 using std::placeholders::_1;
 
 PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
+    , pcl_init_(false)
     , pub_rate_(2.0)
     , point_cloud_topic_("")
     , segment_distance_threshold_(0.01)
@@ -61,6 +63,7 @@ PCLAnalysis::PCLAnalysis()
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
+    cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
     // cloud_ground_pub_ = nh_.advertise<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     // cloud_nonground_pub_ = nh_.advertise<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
 
@@ -73,12 +76,9 @@ PCLAnalysis::PCLAnalysis()
 PCLAnalysis::~PCLAnalysis(){}
 
 void PCLAnalysis::timerCallback() {
-
-    // Make sure we have recent pointcloud to work with
-    rclcpp::Time last_cloud_stamp;
-    pcl_conversions::fromPCL(cloud_latest_->header.stamp, last_cloud_stamp);
-    double seconds_since_last_cloud = (this->get_clock()->now() - last_cloud_stamp).seconds();
-    if (seconds_since_last_cloud > 1.0/pub_rate_) {return;}
+    if (!pcl_init_) {
+        return;
+    }
     
     // Downsample cloud for processing
     voxel_grid_filter(cloud_latest_, voxel_grid_leaf_size_);
@@ -88,17 +88,58 @@ void PCLAnalysis::timerCallback() {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
     pmf_ground_extraction(cloud_latest_, cloud_ground, cloud_nonground);
 
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZRGB>());
+    findTrail(cloud_latest_, cloud_clustered);
+
     // Convert to ROS msg and publish
-    sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg;
+    sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
     pcl::toROSMsg(*cloud_ground, cloud_ground_msg);
     pcl::toROSMsg(*cloud_nonground, cloud_nonground_msg);
+    pcl::toROSMsg(*cloud_clustered, cloud_clustered_msg);
     cloud_ground_pub_->publish(cloud_ground_msg);
     cloud_nonground_pub_->publish(cloud_nonground_msg);
+    cloud_clustered_msg.header = cloud_ground_msg.header;
+    cloud_cluster_pub_->publish(cloud_clustered_msg);
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    pcl_init_ = true;
     // Convert ROS msg to PCL and store
     pcl::fromROSMsg(*msg, *cloud_latest_);
+}
+
+void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                                      pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered) {
+
+    // Set up the clustering
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
+    tree->setInputCloud(cloud);
+
+    std::vector<pcl::PointIndices> cluster_indices;
+    pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+    ec.setClusterTolerance(1.0); // Adjust tolerance as necessary
+    ec.setMinClusterSize(50); // Minimum number of points to form a cluster
+    ec.setMaxClusterSize(25000); // Maximum number of points to form a cluster
+    ec.setSearchMethod(tree);
+    ec.setInputCloud(cloud);
+    ec.extract(cluster_indices);
+
+    // Create a colored point cloud for visualization
+    cloud_clustered->resize(cloud->points.size());
+    
+    int j = 0;
+    for (const auto& indices : cluster_indices) {
+        uint32_t color = rand() % 0xFFFFFF; // Random color
+        for (const auto& index : indices.indices) {
+            cloud_clustered->points[index].x = cloud->points[index].x;
+            cloud_clustered->points[index].y = cloud->points[index].y;
+            cloud_clustered->points[index].z = cloud->points[index].z;
+            cloud_clustered->points[index].r = (color >> 16) & 0xFF;
+            cloud_clustered->points[index].g = (color >> 8) & 0xFF;
+            cloud_clustered->points[index].b = color & 0xFF;
+        }
+        j++;
+    }
 }
 
 void PCLAnalysis::segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,

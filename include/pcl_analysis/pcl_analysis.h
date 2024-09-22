@@ -28,12 +28,13 @@ class PCLAnalysis : public rclcpp::Node {
         void timerCallback();
 
     private: 
-
+        bool pcl_init_;
         std::string     point_cloud_topic_;
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
 
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_ground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_nonground_pub_;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_cluster_pub_;
 
         rclcpp::TimerBase::SharedPtr timer_;
 
@@ -48,6 +49,9 @@ class PCLAnalysis : public rclcpp::Node {
         float   pmf_slope_;
         float   pmf_initial_distance_;
         float   pmf_max_distance_;
+
+        void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                             pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered);
 
         // Segments out a plane from a pointcloud including points within segment_distance_threshold_ of plane model
         void segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
