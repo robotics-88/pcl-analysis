@@ -28,7 +28,8 @@ class PCLAnalysis : public rclcpp::Node {
         void timerCallback();
 
     private: 
-        bool pcl_init_;
+        bool pcl_time_;
+        int count_;
         std::string     point_cloud_topic_;
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
 

@@ -10,6 +10,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/common/io.h>
 
 #include <pcl/segmentation/progressive_morphological_filter.h>
 #include <pcl/segmentation/extract_clusters.h>
@@ -18,7 +19,8 @@ using std::placeholders::_1;
 
 PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
-    , pcl_init_(false)
+    , pcl_time_(false)
+    , count_(0)
     , pub_rate_(2.0)
     , point_cloud_topic_("")
     , segment_distance_threshold_(0.01)
@@ -76,7 +78,7 @@ PCLAnalysis::PCLAnalysis()
 PCLAnalysis::~PCLAnalysis(){}
 
 void PCLAnalysis::timerCallback() {
-    if (!pcl_init_) {
+    if (!pcl_time_) {
         return;
     }
     
@@ -101,12 +103,20 @@ void PCLAnalysis::timerCallback() {
     cloud_nonground_pub_->publish(cloud_nonground_msg);
     cloud_clustered_msg.header = cloud_ground_msg.header;
     cloud_cluster_pub_->publish(cloud_clustered_msg);
+    pcl_time_ = false;
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-    pcl_init_ = true;
+    if (count_ == 10) {
+        pcl_time_ = true;
+        count_ = 0;
+    }
+    // TODO reset cloud latest
     // Convert ROS msg to PCL and store
-    pcl::fromROSMsg(*msg, *cloud_latest_);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr now_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*msg, *now_cloud);
+    *cloud_latest_ += *now_cloud;
+    count_++;
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
