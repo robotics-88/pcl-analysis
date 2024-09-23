@@ -102,6 +102,7 @@ void PCLAnalysis::timerCallback() {
     cloud_ground_pub_->publish(cloud_ground_msg);
     cloud_nonground_pub_->publish(cloud_nonground_msg);
     cloud_clustered_msg.header = cloud_ground_msg.header;
+    cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
     cloud_cluster_pub_->publish(cloud_clustered_msg);
     pcl_time_ = false;
 }
