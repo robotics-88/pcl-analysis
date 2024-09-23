@@ -105,6 +105,7 @@ void PCLAnalysis::timerCallback() {
     cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
     cloud_cluster_pub_->publish(cloud_clustered_msg);
     pcl_time_ = false;
+    cloud_latest_.reset(new pcl::PointCloud<pcl::PointXYZ>);
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
