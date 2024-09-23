@@ -49,29 +49,15 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pmf_initial_distance", pmf_initial_distance_);
     this->get_parameter("pmf_max_distance", pmf_max_distance_);
 
-    // private_nh_.param<double>("pub_rate", pub_rate_, pub_rate_);
-    // private_nh_.param<std::string>("point_cloud_topic", point_cloud_topic_, point_cloud_topic_);
-    // private_nh_.param<double>("segment_distance_threshold", segment_distance_threshold_, segment_distance_threshold_);
-    // private_nh_.param<float>("voxel_grid_leaf_size", voxel_grid_leaf_size_, voxel_grid_leaf_size_);
-
-    // private_nh_.param<int>("pmf_max_window_size", pmf_max_window_size_, pmf_max_window_size_);
-    // private_nh_.param<float>("pmf_slope", pmf_slope_, pmf_slope_);
-    // private_nh_.param<float>("pmf_initial_distance", pmf_initial_distance_, pmf_initial_distance_);
-    // private_nh_.param<float>("pmf_max_distance", pmf_max_distance_, pmf_max_distance_);
-
     // Set up pubs and subs
-    // point_cloud_subscriber_ = nh_.subscribe<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, &PCLAnalysis::pointCloudCallback, this);
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
-    // cloud_ground_pub_ = nh_.advertise<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
-    // cloud_nonground_pub_ = nh_.advertise<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
 
     // Set up timer for pointcloud processing and publication
     timer_ = this->create_wall_timer(std::chrono::duration<float>(1.0/pub_rate_), std::bind(&PCLAnalysis::timerCallback, this));
-    // timer_ = nh_.createTimer(ros::Duration(1.0/pub_rate_), &PCLAnalysis::timerCallback, this);
 
 }
 
