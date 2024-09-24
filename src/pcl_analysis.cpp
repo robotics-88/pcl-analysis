@@ -7,6 +7,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
+#include <pcl/sample_consensus/sac_model_stick.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
@@ -77,7 +78,7 @@ void PCLAnalysis::timerCallback() {
     pmf_ground_extraction(cloud_latest_, cloud_ground, cloud_nonground);
 
     // Cluster ground returns to find the trail
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZRGB>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
     findTrail(cloud_ground, cloud_clustered);
 
     // Convert to ROS msg and publish
@@ -108,8 +109,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                                      pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered) {
-
+                                      pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered) {
     // Set up the clustering
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
     tree->setInputCloud(cloud);
@@ -122,23 +122,94 @@ void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     ec.setSearchMethod(tree);
     ec.setInputCloud(cloud);
     ec.extract(cluster_indices);
-
-    // Create a colored point cloud for visualization
-    cloud_clustered->resize(cloud->points.size());
-    
-    int j = 0;
-    for (const auto& indices : cluster_indices) {
-        uint32_t color = rand() % 0xFFFFFF; // Random color
-        for (const auto& index : indices.indices) {
-            cloud_clustered->points[index].x = cloud->points[index].x;
-            cloud_clustered->points[index].y = cloud->points[index].y;
-            cloud_clustered->points[index].z = cloud->points[index].z;
-            cloud_clustered->points[index].r = (color >> 16) & 0xFF;
-            cloud_clustered->points[index].g = (color >> 8) & 0xFF;
-            cloud_clustered->points[index].b = color & 0xFF;
+    if (cluster_indices.size() == 0) return;
+    // TEST: Get largest cluster
+    int max_index = 0, max_size = 0;
+    for (int ii = 0; ii < cluster_indices.size(); ii++) {
+        if (cluster_indices.at(ii).indices.size() > max_size) {
+            max_index = ii;
+            max_size = cluster_indices.at(ii).indices.size();
         }
-        j++;
     }
+    
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointIndices::Ptr cluster(new pcl::PointIndices());
+    *cluster = cluster_indices.at(max_index);
+    pcl::ExtractIndices<pcl::PointXYZ> extract;
+    extract.setInputCloud(cloud);
+    extract.setIndices(cluster);
+    extract.filter(*cloud_clustered);
+
+    // TEST: Get cluster best fit to shape
+    // cloud_clustered = findMaximumPlanar(cloud, cluster_indices);
+
+    // // Create a colored point cloud for visualization
+    // cloud_clustered->resize(cloud->points.size());
+    
+    // Original, just return all clusters
+    // int j = 0;
+    // for (const auto& indices : cluster_indices) {
+    //     uint32_t color = rand() % 0xFFFFFF; // Random color
+    //     for (const auto& index : indices.indices) {
+    //         cloud_clustered->points[index].x = cloud->points[index].x;
+    //         cloud_clustered->points[index].y = cloud->points[index].y;
+    //         cloud_clustered->points[index].z = cloud->points[index].z;
+    //         cloud_clustered->points[index].r = (color >> 16) & 0xFF;
+    //         cloud_clustered->points[index].g = (color >> 8) & 0xFF;
+    //         cloud_clustered->points[index].b = color & 0xFF;
+    //     }
+    //     j++;
+    // }
+}
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr PCLAnalysis::findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
+                                    const std::vector<pcl::PointIndices> cluster_indices) {
+    // Iterate through each cluster
+    int index = 0, count = 0;
+    float max_ratio = 0.0;
+    for (int ii = 0; ii < cluster_indices.size(); ii++) {
+    // for (pcl::PointIndices cluster : cluster_indices) {
+        if (cluster_indices.at(ii).indices.size() < 1000) {
+            continue;
+        }
+        pcl::PointIndices::Ptr cluster(new pcl::PointIndices());
+        *cluster = cluster_indices.at(ii);
+        pcl::PointCloud<pcl::PointXYZ> cluster_points;
+        pcl::ExtractIndices<pcl::PointXYZ> extract;
+        extract.setInputCloud(cloud_clustered);
+        extract.setIndices(cluster);
+        extract.filter(cluster_points);
+
+        // Perform RANSAC plane fitting
+        pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+        pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+        pcl::SACSegmentation<pcl::PointXYZ> seg;
+        seg.setOptimizeCoefficients(true);
+        seg.setModelType(pcl::SACMODEL_LINE);
+        seg.setMethodType(pcl::SAC_RANSAC);
+        seg.setDistanceThreshold(0.1); // Set distance threshold for inliers
+        seg.setInputCloud(cluster_points.makeShared());
+        seg.segment(*inliers, *coefficients);
+
+        // Calculate planarity metric (e.g., inlier ratio)
+        float inlier_ratio = static_cast<float>(inliers->indices.size()) / cluster_points.size();
+
+        // Store the planarity metric for comparison
+        if (inlier_ratio > max_ratio) {
+            index = count;
+        }
+        count++;
+    }
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_points(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointIndices::Ptr cluster(new pcl::PointIndices());
+    *cluster = cluster_indices.at(index);
+    pcl::ExtractIndices<pcl::PointXYZ> extract;
+    extract.setInputCloud(cloud_clustered);
+    extract.setIndices(cluster);
+    extract.filter(*cluster_points);
+    
+    return cluster_points;
 }
 
 void PCLAnalysis::segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,

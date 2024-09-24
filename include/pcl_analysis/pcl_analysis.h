@@ -52,8 +52,10 @@ class PCLAnalysis : public rclcpp::Node {
         float   pmf_max_distance_;
 
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                             pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_clustered);
-
+                             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
+                                                         const std::vector<pcl::PointIndices> cluster_indices);
+                                    
         // Segments out a plane from a pointcloud including points within segment_distance_threshold_ of plane model
         void segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane,
