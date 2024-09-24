@@ -14,6 +14,7 @@ find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -52,6 +53,7 @@ ament_target_dependencies(${PROJECT_NAME}
   pcl_ros
   rclcpp
   sensor_msgs
+  visualization_msgs
 )
 
 target_link_libraries(${PROJECT_NAME}

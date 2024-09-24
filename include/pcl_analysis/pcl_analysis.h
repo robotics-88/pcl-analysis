@@ -13,6 +13,8 @@ Author: Gus Meyer <gus@robotics88.com>
 #include "pcl/point_types.h"
 #include "pcl_conversions/pcl_conversions.h"
 
+#include "visualization_msgs/msg/marker.hpp"
+
 /**
  * @class PCLAnalysis
  * @brief A class for analyzing and segmenting point clouds
@@ -36,11 +38,15 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_ground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_nonground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_cluster_pub_;
+        rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       trail_line_pub_;
 
         rclcpp::TimerBase::SharedPtr timer_;
 
         // Main input pointcloud holder
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_{new pcl::PointCloud<pcl::PointXYZ>()};
+
+        // Trail line
+        visualization_msgs::msg::Marker trail_marker_;
 
         // Params
         double  pub_rate_;
@@ -55,7 +61,8 @@ class PCLAnalysis : public rclcpp::Node {
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
         pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
                                                          const std::vector<pcl::PointIndices> cluster_indices);
-                                    
+        void extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
+
         // Segments out a plane from a pointcloud including points within segment_distance_threshold_ of plane model
         void segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane,

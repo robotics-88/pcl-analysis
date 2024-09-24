@@ -57,6 +57,13 @@ PCLAnalysis::PCLAnalysis()
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
 
+    trail_line_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/trail_line", 10);
+    trail_marker_.header.frame_id = "map";
+    trail_marker_.scale.x = 3.0;
+    trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    trail_marker_.action = visualization_msgs::msg::Marker::ADD;
+    trail_marker_.id = 0;
+
     // Set up timer for pointcloud processing and publication
     timer_ = this->create_wall_timer(std::chrono::duration<float>(1.0/pub_rate_), std::bind(&PCLAnalysis::timerCallback, this));
 
@@ -93,10 +100,13 @@ void PCLAnalysis::timerCallback() {
     cloud_cluster_pub_->publish(cloud_clustered_msg);
     pcl_time_ = false;
     cloud_latest_.reset(new pcl::PointCloud<pcl::PointXYZ>);
+
+    trail_line_pub_->publish(trail_marker_);
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-    if (count_ == 10) {
+    // TODO make window a param (and get rid of timer?)
+    if (count_ == 30) {
         pcl_time_ = true;
         count_ = 0;
     }
@@ -132,7 +142,7 @@ void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
         }
     }
     
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_points(new pcl::PointCloud<pcl::PointXYZ>);
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr cluster_points(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointIndices::Ptr cluster(new pcl::PointIndices());
     *cluster = cluster_indices.at(max_index);
     pcl::ExtractIndices<pcl::PointXYZ> extract;
@@ -160,6 +170,39 @@ void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     //     }
     //     j++;
     // }
+
+    // Extract line segment and append to trail marker list
+    extractLineSegment(cloud_clustered);
+}
+
+void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered) {
+    // Perform RANSAC plane fitting
+    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    pcl::SACSegmentation<pcl::PointXYZ> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_LINE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.1); // Set distance threshold for inliers
+    seg.setInputCloud(cloud_clustered);
+    seg.segment(*inliers, *coefficients);
+
+    if (inliers->indices.size() == 0) {
+        std::cout << "Could not estimate a linear model for the given dataset." << std::endl;
+    }
+
+    // Extract the line segment endpoints from the coefficients
+    geometry_msgs::msg::Point point;
+    point.x = coefficients->values[0];
+    point.y = coefficients->values[1];
+    point.z = coefficients->values[2];
+    trail_marker_.points.push_back(point);
+
+    // Second set of coefficients is a direction vector
+    point.x += coefficients->values[3];
+    point.y += coefficients->values[4];
+    point.z += coefficients->values[5];
+    trail_marker_.points.push_back(point);
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr PCLAnalysis::findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
