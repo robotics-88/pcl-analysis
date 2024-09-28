@@ -52,6 +52,7 @@ class PCLAnalysis : public rclcpp::Node {
 
         // Trail line
         visualization_msgs::msg::Marker trail_marker_;
+        bool do_trail_;
 
         // Params
         double  pub_rate_;
