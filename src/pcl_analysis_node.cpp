@@ -9,10 +9,10 @@ int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
 
-  auto tm_node = std::make_shared<PCLAnalysis>();
+  auto node = std::make_shared<PCLAnalysis>();
 
   rclcpp::executors::SingleThreadedExecutor executor;
-  executor.add_node(tm_node);
+  executor.add_node(node);
   executor.spin();
   
   rclcpp::shutdown();

@@ -12,6 +12,7 @@ find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -52,6 +53,8 @@ add_executable(${PROJECT_NAME}_node src/pcl_analysis_node.cpp)
 ament_target_dependencies(${PROJECT_NAME}
   pcl_ros
   rclcpp
+  std_msgs
+  geometry_msgs
   sensor_msgs
   visualization_msgs
 )
@@ -78,22 +81,6 @@ install(TARGETS
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
-
-install(DIRECTORY include/
-  DESTINATION include
-)
-
-#############
-## Testing ##
-#############
-
-## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_pcl-analysis.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
-
-ament_export_include_directories(include)
 
 ament_package()
 

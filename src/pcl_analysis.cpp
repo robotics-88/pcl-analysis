@@ -30,6 +30,7 @@ PCLAnalysis::PCLAnalysis()
     , pmf_slope_(1.0)
     , pmf_initial_distance_(0.5)
     , pmf_max_distance_(3.0)
+    , last_pub_time_(0, 0, RCL_ROS_TIME)
 {
     // Get params
     this->declare_parameter("pub_rate", pub_rate_);
@@ -51,11 +52,15 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pmf_max_distance", pmf_max_distance_);
 
     // Set up pubs and subs
+    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/local_position/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
+
+    percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 
     trail_line_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/trail_line", 10);
     trail_marker_.header.frame_id = "map";
@@ -63,30 +68,43 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
     trail_marker_.action = visualization_msgs::msg::Marker::ADD;
     trail_marker_.id = 0;
-
-    // Set up timer for pointcloud processing and publication
-    timer_ = this->create_wall_timer(std::chrono::duration<float>(1.0/pub_rate_), std::bind(&PCLAnalysis::timerCallback, this));
-
 }
 
 PCLAnalysis::~PCLAnalysis(){}
 
-void PCLAnalysis::timerCallback() {
-    if (!pcl_time_) {
+void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    current_pose_ = *msg;
+}
+
+void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+
+    // Only run processing at limited rate
+    rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
+    if (dur.seconds() < (1.0 / pub_rate_)) {
         return;
     }
+
+    // Convert ROS msg to PCL and store
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*msg, *cloud);
     
     // Downsample cloud for processing
-    voxel_grid_filter(cloud_latest_, voxel_grid_leaf_size_);
+    voxel_grid_filter(cloud, voxel_grid_leaf_size_);
 
     // Extract ground returns
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
-    pmf_ground_extraction(cloud_latest_, cloud_ground, cloud_nonground);
+    pmf_ground_extraction(cloud, cloud_ground, cloud_nonground);
 
     // Cluster ground returns to find the trail
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
     findTrail(cloud_ground, cloud_clustered);
+
+    // Determine percentage of points above current location
+    float percent = get_percent_above(cloud);
+    std_msgs::msg::Float32 percent_above_msg;
+    percent_above_msg.data = percent;
+    percent_above_pub_->publish(percent_above_msg);
 
     // Convert to ROS msg and publish
     sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
@@ -99,23 +117,10 @@ void PCLAnalysis::timerCallback() {
     cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
     cloud_cluster_pub_->publish(cloud_clustered_msg);
     pcl_time_ = false;
-    cloud_latest_.reset(new pcl::PointCloud<pcl::PointXYZ>);
 
     trail_line_pub_->publish(trail_marker_);
-}
 
-void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-    // TODO make window a param (and get rid of timer?)
-    if (count_ == 30) {
-        pcl_time_ = true;
-        count_ = 0;
-    }
-    // TODO reset cloud latest
-    // Convert ROS msg to PCL and store
-    pcl::PointCloud<pcl::PointXYZ>::Ptr now_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::fromROSMsg(*msg, *now_cloud);
-    *cloud_latest_ += *now_cloud;
-    count_++;
+    last_pub_time_ = this->get_clock()->now();
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
@@ -332,4 +337,20 @@ void PCLAnalysis::voxel_grid_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, f
     sor.setInputCloud (cloud);
     sor.setLeafSize (leaf_size, leaf_size, leaf_size);
     sor.filter (*cloud);
+}
+
+float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+    if (cloud->points.size() < 1) {
+        RCLCPP_ERROR(this->get_logger(), "Attempting to process invalid PCL");
+        return -1.0;
+    }
+
+    int num_pts_above = 0;
+    for (const auto & point : cloud->points) {
+        if (point.z > current_pose_.pose.position.z) {
+            num_pts_above++;
+        }
+    }
+
+    return static_cast<float>(num_pts_above) / cloud->points.size();
 }
