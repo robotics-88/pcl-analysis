@@ -199,7 +199,7 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
     seg.segment(*inliers, *coefficients);
 
     if (inliers->indices.size() == 0) {
-        std::cout << "Could not estimate a linear model for the given dataset." << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Could not estimate a linear model for the given dataset.");
     }
 
     // Extract the line segment endpoints from the coefficients
@@ -285,7 +285,7 @@ void PCLAnalysis::segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 
     if (inliers->indices.size () == 0)
     {
-        std::cout << "Could not estimate a planar model from pointcloud." << std::endl;
+        RCLCPP_INFO(this->get_logger(),"Could not estimate a planar model from pointcloud.");
         return;
     }
 
