@@ -23,6 +23,7 @@ PCLAnalysis::PCLAnalysis()
     , pcl_time_(false)
     , count_(0)
     , do_trail_(false)
+    , trail_goal_enabled_(false)
     , pub_rate_(2.0)
     , point_cloud_topic_("")
     , segment_distance_threshold_(0.01)
@@ -71,6 +72,10 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
     trail_marker_.action = visualization_msgs::msg::Marker::ADD;
     trail_marker_.id = 0;
+    trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::Point>("/explorable_goal", 10);
+
+    trail_enabled_service_ = this->create_service<rcl_interfaces::srv::SetParametersAtomically>("trail_enabled_service", std::bind(&PCLAnalysis::setTrailsEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+
 }
 
 PCLAnalysis::~PCLAnalysis(){}
@@ -214,6 +219,10 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
     point.y += coefficients->values[4];
     point.z += coefficients->values[5];
     trail_marker_.points.push_back(point);
+
+    if (trail_goal_enabled_) {
+        trail_goal_pub_->publish(point);
+    }
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr PCLAnalysis::findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
@@ -359,4 +368,18 @@ float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) 
     }
 
     return static_cast<float>(num_pts_above) / cloud->points.size();
+}
+
+
+bool PCLAnalysis::setTrailsEnabled(const std::shared_ptr<rmw_request_id_t>/*request_header*/,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Request> req,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Response> resp) {
+  for (int ii = 0; ii < req->parameters.size(); ii++) {
+    if (req->parameters.at(ii).name == "trails_enabled") {
+      trail_goal_enabled_ = req->parameters.at(ii).value.bool_value;
+    }
+  }
+  auto result = rcl_interfaces::msg::SetParametersResult();
+  result.successful = true;
+  resp->result = result;
 }

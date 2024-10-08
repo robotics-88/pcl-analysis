@@ -9,6 +9,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <rclcpp/rclcpp.hpp>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include <pcl/point_cloud.h>
@@ -44,6 +45,7 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_cluster_pub_;
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                percent_above_pub_;
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       trail_line_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr             trail_goal_pub_;
 
         rclcpp::Time last_pub_time_;
 
@@ -53,6 +55,8 @@ class PCLAnalysis : public rclcpp::Node {
         // Trail line
         visualization_msgs::msg::Marker trail_marker_;
         bool do_trail_;
+        bool trail_goal_enabled_;
+        rclcpp::Service<rcl_interfaces::srv::SetParametersAtomically>::SharedPtr trail_enabled_service_;
 
         // Params
         double  pub_rate_;
@@ -90,6 +94,10 @@ class PCLAnalysis : public rclcpp::Node {
 
         // Determines percentage of pointcloud points above drone
         float get_percent_above(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+
+        bool setTrailsEnabled(const std::shared_ptr<rmw_request_id_t>/*request_header*/,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Request> req,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Response> resp);
 
 }; // class PCLAnalysis
 
