@@ -15,6 +15,7 @@ Author: Gus Meyer <gus@robotics88.com>
 
 #include <pcl/segmentation/progressive_morphological_filter.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/filters/passthrough.h>
 
 using std::placeholders::_1;
 
@@ -33,6 +34,7 @@ PCLAnalysis::PCLAnalysis()
     , pmf_initial_distance_(0.5)
     , pmf_max_distance_(3.0)
     , last_pub_time_(0, 0, RCL_ROS_TIME)
+    , cloud_init_(false)
 {
     // Get params
     this->declare_parameter("do_trail", do_trail_);
@@ -56,13 +58,14 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pmf_max_distance", pmf_max_distance_);
 
     // Set up pubs and subs
-    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/local_position/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
 
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
+    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_to_use", 10);
 
     percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 
@@ -72,7 +75,14 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
     trail_marker_.action = visualization_msgs::msg::Marker::ADD;
     trail_marker_.id = 0;
-    trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::Point>("/explorable_goal", 10);
+    // trail_marker_.ns = "trail";
+    trail_marker_.color.r = 0;
+    trail_marker_.color.g = 0;
+    trail_marker_.color.b = 255;
+    trail_marker_.color.a = 255;
+    // lives forever
+    trail_marker_.lifetime = rclcpp::Duration(0.0, 0.0);
+    trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/explorable_goal", 10);
 
     trail_enabled_service_ = this->create_service<rcl_interfaces::srv::SetParametersAtomically>("trail_enabled_service", std::bind(&PCLAnalysis::setTrailsEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
@@ -85,19 +95,17 @@ void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::S
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    // Convert ROS msg to PCL and store
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*msg, *cloud);
+    makeRegionalCloud(cloud);
+    cloud = cloud_regional_; // TODO dont do this, replace below
 
     // Only run processing at limited rate
     rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
     if (dur.seconds() < (1.0 / pub_rate_)) {
         return;
     }
-
-    // Convert ROS msg to PCL and store
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::fromROSMsg(*msg, *cloud);
-    
-    // Downsample cloud for processing
-    voxel_grid_filter(cloud, voxel_grid_leaf_size_);
 
     // Determine percentage of points above current location
     float percent = get_percent_above(cloud);
@@ -132,6 +140,43 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     pcl_time_ = false;
 
     last_pub_time_ = this->get_clock()->now();
+}
+
+void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+    if (!cloud_init_) {
+        cloud_regional_ = cloud;
+        cloud_init_ = true;
+        return;
+    }
+    *cloud_regional_ += *cloud;
+    rclcpp::Time tstart = this->get_clock()->now();
+    // Cut off to local area
+
+	double planning_horizon = 10.0;
+	pcl::PassThrough<pcl::PointXYZ> pass;
+	// X
+	pass.setInputCloud (cloud_regional_);
+	pass.setFilterFieldName ("x");
+	double lo = current_pose_.pose.position.x - planning_horizon;
+	double hi = current_pose_.pose.position.x + planning_horizon;
+	pass.setFilterLimits (lo, hi);
+	pass.filter (*cloud_regional_);
+	// Y
+	pass.setInputCloud (cloud_regional_);
+	pass.setFilterFieldName ("y");
+	lo = current_pose_.pose.position.y - planning_horizon;
+	hi = current_pose_.pose.position.y + planning_horizon;
+	pass.setFilterLimits (lo, hi);
+	pass.filter (*cloud_regional_);
+    rclcpp::Time t2 = this->get_clock()->now();
+
+    // Down sample, filter by voxel
+    voxel_grid_filter(cloud_regional_, voxel_grid_leaf_size_);
+    rclcpp::Time tend = this->get_clock()->now();
+
+    sensor_msgs::msg::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*cloud_regional_, cloud_msg);
+    planning_pcl_pub_->publish(cloud_msg);
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
@@ -221,7 +266,12 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
     trail_marker_.points.push_back(point);
 
     if (trail_goal_enabled_) {
-        trail_goal_pub_->publish(point);
+        // TODO is it always true that the farther point is the one we want?
+        geometry_msgs::msg::PoseStamped point_msg;
+        point_msg.header.frame_id = "map";
+        point_msg.header.stamp = this->get_clock()->now();
+        point_msg.pose.position = point;
+        trail_goal_pub_->publish(point_msg);
     }
 }
 

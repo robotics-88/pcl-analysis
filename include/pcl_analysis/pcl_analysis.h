@@ -43,14 +43,16 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_ground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_nonground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_cluster_pub_;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         planning_pcl_pub_;
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                percent_above_pub_;
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       trail_line_pub_;
-        rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr             trail_goal_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr       trail_goal_pub_;
 
         rclcpp::Time last_pub_time_;
 
         // Main input pointcloud holder
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_{new pcl::PointCloud<pcl::PointXYZ>()};
+        bool cloud_init_;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_regional_{new pcl::PointCloud<pcl::PointXYZ>()};
 
         // Trail line
         visualization_msgs::msg::Marker trail_marker_;
@@ -68,6 +70,8 @@ class PCLAnalysis : public rclcpp::Node {
         float   pmf_max_distance_;
 
         geometry_msgs::msg::PoseStamped current_pose_;
+
+        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
 
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
