@@ -23,6 +23,7 @@ PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
     , pcl_time_(false)
     , count_(0)
+    , planning_horizon_(10.0)
     , do_trail_(false)
     , trail_goal_enabled_(false)
     , pub_rate_(2.0)
@@ -84,6 +85,9 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.lifetime = rclcpp::Duration(0.0, 0.0);
     trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/explorable_goal", 10);
 
+    initGridParams();
+    density_grid_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("occ_density_grid", 10);
+
     trail_enabled_service_ = this->create_service<rcl_interfaces::srv::SetParametersAtomically>("trail_enabled_service", std::bind(&PCLAnalysis::setTrailsEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
 }
@@ -92,6 +96,26 @@ PCLAnalysis::~PCLAnalysis(){}
 
 void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
     current_pose_ = *msg;
+}
+
+void PCLAnalysis::initGridParams() {
+    this->declare_parameter<float>("cell_size", 0.5);
+    this->declare_parameter<float>("position_x", 0.0);
+    this->declare_parameter<float>("position_y", 0.0);
+    this->declare_parameter<float>("length_x", planning_horizon_ * 2);
+    this->declare_parameter<float>("length_y", planning_horizon_ * 2);
+    this->declare_parameter<float>("intensity_factor", 1.0);
+    this->declare_parameter<float>("height_factor", 1.0);
+
+    this->get_parameter("cell_size", grid_map_.cell_size);
+    this->get_parameter("position_x", grid_map_.position_x);
+    this->get_parameter("position_y", grid_map_.position_y);
+    this->get_parameter("length_x", grid_map_.length_x);
+    this->get_parameter("length_y", grid_map_.length_y);
+    this->get_parameter("intensity_factor", grid_map_.intensity_factor);
+    this->get_parameter("height_factor", grid_map_.height_factor);
+
+    grid_map_.paramRefresh();
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -152,20 +176,19 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
     rclcpp::Time tstart = this->get_clock()->now();
     // Cut off to local area
 
-	double planning_horizon = 10.0;
 	pcl::PassThrough<pcl::PointXYZ> pass;
 	// X
 	pass.setInputCloud (cloud_regional_);
 	pass.setFilterFieldName ("x");
-	double lo = current_pose_.pose.position.x - planning_horizon;
-	double hi = current_pose_.pose.position.x + planning_horizon;
+	double lo = current_pose_.pose.position.x - planning_horizon_;
+	double hi = current_pose_.pose.position.x + planning_horizon_;
 	pass.setFilterLimits (lo, hi);
 	pass.filter (*cloud_regional_);
 	// Y
 	pass.setInputCloud (cloud_regional_);
 	pass.setFilterFieldName ("y");
-	lo = current_pose_.pose.position.y - planning_horizon;
-	hi = current_pose_.pose.position.y + planning_horizon;
+	lo = current_pose_.pose.position.y - planning_horizon_;
+	hi = current_pose_.pose.position.y + planning_horizon_;
 	pass.setFilterLimits (lo, hi);
 	pass.filter (*cloud_regional_);
     rclcpp::Time t2 = this->get_clock()->now();
@@ -177,6 +200,48 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
     sensor_msgs::msg::PointCloud2 cloud_msg;
     pcl::toROSMsg(*cloud_regional_, cloud_msg);
     planning_pcl_pub_->publish(cloud_msg);
+
+    makeRegionalGrid();
+}
+
+void PCLAnalysis::makeRegionalGrid() {
+    auto density_grid = std::make_shared<nav_msgs::msg::OccupancyGrid>();
+    grid_map_.initGrid(density_grid, current_pose_.pose.position.x, current_pose_.pose.position.y);
+    grid_map_.paramRefresh();
+    std::vector<signed char> ipoints(grid_map_.cell_num_x * grid_map_.cell_num_y);
+    // initialize grid vectors: -128
+    for (int ii = 0; ii < ipoints.size(); ii++)
+    {
+      ipoints.at(ii) = 0;
+    }
+    for (pcl::PointXYZ p : cloud_regional_->points)
+    {
+      if (p.x > 0.01 || p.x < -0.01)
+      {
+        if (p.x > grid_map_.bottomright_x && p.x < grid_map_.topleft_x)
+        {
+          if (p.y > grid_map_.bottomright_y && p.y < grid_map_.topleft_y)
+          {
+            PointXY cell = grid_map_.getIndex(p.x, p.y);
+            if (cell.x < grid_map_.cell_num_x && cell.y < grid_map_.cell_num_y)
+            {
+              ipoints[cell.y * grid_map_.cell_num_x + cell.x]++;
+            }
+            else
+            {
+              RCLCPP_WARN_STREAM(this->get_logger(), "Cell out of range: " << cell.x << " - " << grid_map_.cell_num_x << " ||| " << cell.y << " - " << grid_map_.cell_num_y);
+            }
+          }
+        }
+      }
+    }
+
+    density_grid->header.stamp = this->now();
+    density_grid->header.frame_id = "map";
+    density_grid->info.map_load_time = this->now();
+    density_grid->data = ipoints;
+
+    density_grid_pub_->publish(*density_grid);
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
