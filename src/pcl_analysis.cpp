@@ -85,7 +85,6 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.lifetime = rclcpp::Duration(0.0, 0.0);
     trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/explorable_goal", 10);
 
-    initGridParams();
     density_grid_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("occ_density_grid", 10);
 
     trail_enabled_service_ = this->create_service<rcl_interfaces::srv::SetParametersAtomically>("trail_enabled_service", std::bind(&PCLAnalysis::setTrailsEnabled, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
@@ -96,26 +95,6 @@ PCLAnalysis::~PCLAnalysis(){}
 
 void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
     current_pose_ = *msg;
-}
-
-void PCLAnalysis::initGridParams() {
-    this->declare_parameter<float>("cell_size", 0.5);
-    this->declare_parameter<float>("position_x", 0.0);
-    this->declare_parameter<float>("position_y", 0.0);
-    this->declare_parameter<float>("length_x", planning_horizon_ * 2);
-    this->declare_parameter<float>("length_y", planning_horizon_ * 2);
-    this->declare_parameter<float>("intensity_factor", 1.0);
-    this->declare_parameter<float>("height_factor", 1.0);
-
-    this->get_parameter("cell_size", grid_map_.cell_size);
-    this->get_parameter("position_x", grid_map_.position_x);
-    this->get_parameter("position_y", grid_map_.position_y);
-    this->get_parameter("length_x", grid_map_.length_x);
-    this->get_parameter("length_y", grid_map_.length_y);
-    this->get_parameter("intensity_factor", grid_map_.intensity_factor);
-    this->get_parameter("height_factor", grid_map_.height_factor);
-
-    grid_map_.paramRefresh();
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -206,40 +185,31 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
 
 void PCLAnalysis::makeRegionalGrid() {
     auto density_grid = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-    grid_map_.initGrid(density_grid, current_pose_.pose.position.x, current_pose_.pose.position.y);
-    grid_map_.paramRefresh();
-    std::vector<signed char> ipoints(grid_map_.cell_num_x * grid_map_.cell_num_y);
-    // initialize grid vectors: -128
-    for (int ii = 0; ii < ipoints.size(); ii++)
-    {
-      ipoints.at(ii) = 0;
-    }
-    for (pcl::PointXYZ p : cloud_regional_->points)
-    {
-      if (p.x > 0.01 || p.x < -0.01)
-      {
-        if (p.x > grid_map_.bottomright_x && p.x < grid_map_.topleft_x)
-        {
-          if (p.y > grid_map_.bottomright_y && p.y < grid_map_.topleft_y)
-          {
-            PointXY cell = grid_map_.getIndex(p.x, p.y);
-            if (cell.x < grid_map_.cell_num_x && cell.y < grid_map_.cell_num_y)
-            {
-              ipoints[cell.y * grid_map_.cell_num_x + cell.x]++;
-            }
-            else
-            {
-              RCLCPP_WARN_STREAM(this->get_logger(), "Cell out of range: " << cell.x << " - " << grid_map_.cell_num_x << " ||| " << cell.y << " - " << grid_map_.cell_num_y);
-            }
-          }
-        }
-      }
-    }
-
-    density_grid->header.stamp = this->now();
+    double resolution = 0.5;
+    double sz = (planning_horizon_ / resolution) * 2;
+    double origin_x = current_pose_.pose.position.x - (planning_horizon_);
+    double origin_y = current_pose_.pose.position.y - (planning_horizon_);
+     // Initialize occupancy grid message
     density_grid->header.frame_id = "map";
-    density_grid->info.map_load_time = this->now();
-    density_grid->data = ipoints;
+    density_grid->header.stamp = this->get_clock()->now();
+    density_grid->info.resolution = resolution;
+    density_grid->info.width = sz;
+    density_grid->info.height = sz;
+    density_grid->info.origin.position.x = origin_x;
+    density_grid->info.origin.position.y = origin_y;
+    density_grid->info.origin.position.z = 0.0;
+
+    density_grid->data.resize(sz * sz, 0);
+    for (pcl::PointXYZ p : cloud_regional_->points) {
+        // Calculate grid cell indices
+        int grid_x = static_cast<int>((p.x - origin_x) / resolution);
+        int grid_y = static_cast<int>((p.y - origin_y) / resolution);
+
+        // Increment count if the point falls within the grid bounds
+        if (grid_x >= 0 && grid_x < sz && grid_y >= 0 && grid_y < sz) {
+            density_grid->data[grid_y * sz + grid_x]++;
+        }
+    }
 
     density_grid_pub_->publish(*density_grid);
 }
