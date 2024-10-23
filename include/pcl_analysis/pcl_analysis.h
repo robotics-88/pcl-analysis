@@ -18,6 +18,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include "pcl_conversions/pcl_conversions.h"
 
 #include "visualization_msgs/msg/marker.hpp"
+#include <visualization_msgs/msg/marker_array.hpp>
 
 /**
  * @class PCLAnalysis
@@ -45,6 +46,7 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         planning_pcl_pub_;
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                percent_above_pub_;
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       trail_line_pub_;
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  trail_ends_pub_;
         rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr       trail_goal_pub_;
         rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr          density_grid_pub_;
 
@@ -53,7 +55,8 @@ class PCLAnalysis : public rclcpp::Node {
         // Main input pointcloud holder
         bool cloud_init_;
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_regional_{new pcl::PointCloud<pcl::PointXYZ>()};
-        // GridMap grid_map_;
+        bool has_first_trailpt_;
+        geometry_msgs::msg::PoseStamped last_trail_point_;
         double planning_horizon_;
 
         // Trail line
@@ -76,6 +79,7 @@ class PCLAnalysis : public rclcpp::Node {
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
         void makeRegionalGrid();
 
+        void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta2);
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
         pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,

@@ -12,10 +12,13 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/common/io.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <pcl/segmentation/progressive_morphological_filter.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/passthrough.h>
+
+#include <cmath>
 
 using std::placeholders::_1;
 
@@ -36,6 +39,7 @@ PCLAnalysis::PCLAnalysis()
     , pmf_max_distance_(3.0)
     , last_pub_time_(0, 0, RCL_ROS_TIME)
     , cloud_init_(false)
+    , has_first_trailpt_(false)
 {
     // Get params
     this->declare_parameter("do_trail", do_trail_);
@@ -76,13 +80,15 @@ PCLAnalysis::PCLAnalysis()
     trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
     trail_marker_.action = visualization_msgs::msg::Marker::ADD;
     trail_marker_.id = 0;
-    // trail_marker_.ns = "trail";
-    trail_marker_.color.r = 0;
-    trail_marker_.color.g = 0;
-    trail_marker_.color.b = 255;
-    trail_marker_.color.a = 255;
-    // lives forever
+    std_msgs::msg::ColorRGBA yellow;
+    yellow.r = 1.0;
+    yellow.g = 1.0;
+    yellow.b = 0;
+    yellow.a = 1.0;
+    trail_marker_.color = yellow;
     trail_marker_.lifetime = rclcpp::Duration(0.0, 0.0);
+    trail_ends_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/trail_ends", 10);
+
     trail_goal_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/explorable_goal", 10);
 
     density_grid_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("occ_density_grid", 10);
@@ -102,7 +108,6 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
     makeRegionalCloud(cloud);
-    cloud = cloud_regional_; // TODO dont do this, replace below
 
     // Only run processing at limited rate
     rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
@@ -111,7 +116,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     }
 
     // Determine percentage of points above current location
-    float percent = get_percent_above(cloud);
+    float percent = get_percent_above(cloud_regional_);
     std_msgs::msg::Float32 percent_above_msg;
     percent_above_msg.data = percent;
     percent_above_pub_->publish(percent_above_msg);
@@ -120,7 +125,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
         // Extract ground returns
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
-        pmf_ground_extraction(cloud, cloud_ground, cloud_nonground);
+        pmf_ground_extraction(cloud_regional_, cloud_ground, cloud_nonground);
 
         // Cluster ground returns to find the trail
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
@@ -246,27 +251,6 @@ void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     extract.setIndices(cluster);
     extract.filter(*cloud_clustered);
 
-    // TEST: Get cluster best fit to shape
-    // cloud_clustered = findMaximumPlanar(cloud, cluster_indices);
-
-    // // Create a colored point cloud for visualization
-    // cloud_clustered->resize(cloud->points.size());
-    
-    // Original, just return all clusters
-    // int j = 0;
-    // for (const auto& indices : cluster_indices) {
-    //     uint32_t color = rand() % 0xFFFFFF; // Random color
-    //     for (const auto& index : indices.indices) {
-    //         cloud_clustered->points[index].x = cloud->points[index].x;
-    //         cloud_clustered->points[index].y = cloud->points[index].y;
-    //         cloud_clustered->points[index].z = cloud->points[index].z;
-    //         cloud_clustered->points[index].r = (color >> 16) & 0xFF;
-    //         cloud_clustered->points[index].g = (color >> 8) & 0xFF;
-    //         cloud_clustered->points[index].b = color & 0xFF;
-    //     }
-    //     j++;
-    // }
-
     // Extract line segment and append to trail marker list
     extractLineSegment(cloud_clustered);
 }
@@ -282,32 +266,107 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
     seg.setDistanceThreshold(0.1); // Set distance threshold for inliers
     seg.setInputCloud(cloud_clustered);
     seg.segment(*inliers, *coefficients);
+    // TODO add metric checking for percentage of inliers to determine if no trail found
 
     if (inliers->indices.size() == 0) {
         RCLCPP_INFO(this->get_logger(), "Could not estimate a linear model for the given dataset.");
     }
 
     // Extract the line segment endpoints from the coefficients
-    geometry_msgs::msg::Point point;
-    point.x = coefficients->values[0];
-    point.y = coefficients->values[1];
-    point.z = coefficients->values[2];
-    trail_marker_.points.push_back(point);
+    double factor = 5.0;
+    geometry_msgs::msg::Point point1, point2;
+    point1.x = coefficients->values[0] - factor * coefficients->values[3];
+    point1.y = coefficients->values[1] - factor * coefficients->values[4];
+    point1.z = coefficients->values[2] - factor * coefficients->values[5];
+    trail_marker_.points.push_back(point1);
 
     // Second set of coefficients is a direction vector
-    point.x += coefficients->values[3];
-    point.y += coefficients->values[4];
-    point.z += coefficients->values[5];
-    trail_marker_.points.push_back(point);
+    point2.x = coefficients->values[0] + factor * coefficients->values[3];
+    point2.y = coefficients->values[1] + factor * coefficients->values[4];
+    point2.z = coefficients->values[2] + factor * coefficients->values[5];
+    trail_marker_.points.push_back(point2);
+
+    // Viz (add arg)
+    visualization_msgs::msg::MarkerArray markers_msg;
+    visualization_msgs::msg::Marker m;
+    std_msgs::msg::ColorRGBA yellow;
+    yellow.r = 1.0;
+    yellow.g = 1.0;
+    yellow.b = 0;
+    yellow.a = 1.0;
+    m.header.frame_id = "map";
+    double scale = 1.0;
+    m.scale.x = scale;
+    m.scale.y = scale;
+    m.scale.z = scale;
+    m.type = visualization_msgs::msg::Marker::SPHERE;
+    m.action = visualization_msgs::msg::Marker::ADD;
+    m.color = yellow;
+    m.ns = "trail";
+    m.id = 1;
+    m.pose.position = point1;
+    markers_msg.markers.push_back(m);
+    m.id = 2;
+    m.pose.position = point2;
+    markers_msg.markers.push_back(m);
+    trail_ends_pub_->publish(markers_msg);
 
     if (trail_goal_enabled_) {
-        // TODO is it always true that the farther point is the one we want?
+        geometry_msgs::msg::Point send_point;
+        if (has_first_trailpt_) {
+            // Which point minimizes change in heading? TODO, test edge cases, eg what about switchbacks?
+            tf2::Quaternion quat_tf;
+            tf2::convert(current_pose_.pose.orientation, quat_tf);
+            tf2::Matrix3x3 m(quat_tf);
+            double roll, pitch, yaw;
+            m.getRPY(roll, pitch, yaw); // yaw already in ENU frame radians
+            double theta1, theta2;
+            findAngle(current_pose_.pose.position.x, current_pose_.pose.position.y, yaw, point1.x, point1.y, theta1);
+            findAngle(current_pose_.pose.position.x, current_pose_.pose.position.y, yaw, point2.x, point2.y, theta2);
+            if (theta1 < theta2) {
+                send_point = point1;
+            }
+            else {
+                send_point = point2;
+            }
+        }
+        else {
+            // Send the farther point
+            double d1 = sqrt(pow(last_trail_point_.pose.position.x - point1.x, 2) + pow(last_trail_point_.pose.position.y - point1.y, 2));
+            double d2 = sqrt(pow(last_trail_point_.pose.position.x - point2.x, 2) + pow(last_trail_point_.pose.position.y - point2.y, 2));
+            if (d1 < d2) {
+                send_point = point2;
+            }
+            else {
+                send_point = point1;
+            }
+            has_first_trailpt_ = true;
+        }
         geometry_msgs::msg::PoseStamped point_msg;
         point_msg.header.frame_id = "map";
         point_msg.header.stamp = this->get_clock()->now();
-        point_msg.pose.position = point;
+        point_msg.pose.position = send_point;
         trail_goal_pub_->publish(point_msg);
+        last_trail_point_ = point_msg;
     }
+}
+
+void PCLAnalysis::findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta2)
+{
+    // Line ax + by + c = 0, given by x1, y1, theta1
+    double a = -1 * tan(theta1);
+    double b = 1;
+    double c = -y1 + tan(theta1) * x1;
+
+    // Get projected point, (x2, y2) onto line
+    double temp = -1 * (a * x2 + b * y2 + c) / (a * a + b * b);
+    double x = temp * a + x2;
+    double y = temp * b + y2;
+
+    // Compute angle of projection
+    double hyp = sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
+    double adj = sqrt(pow(x1 - x, 2) + pow(y1 - y, 2));
+    theta2 = acos(adj/hyp);
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr PCLAnalysis::findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
