@@ -351,7 +351,7 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
     }
 }
 
-void PCLAnalysis::findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta2)
+void PCLAnalysis::findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta_out)
 {
     // Line ax + by + c = 0, given by x1, y1, theta1
     double a = -1 * tan(theta1);
@@ -366,7 +366,7 @@ void PCLAnalysis::findAngle(const double x1, const double y1, const double theta
     // Compute angle of projection
     double hyp = sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
     double adj = sqrt(pow(x1 - x, 2) + pow(y1 - y, 2));
-    theta2 = acos(adj/hyp);
+    theta_out = acos(adj/hyp);
 }
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr PCLAnalysis::findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,

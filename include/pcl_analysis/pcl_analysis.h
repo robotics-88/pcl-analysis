@@ -79,7 +79,7 @@ class PCLAnalysis : public rclcpp::Node {
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
         void makeRegionalGrid();
 
-        void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta2);
+        void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta_out);
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
         pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
