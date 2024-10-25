@@ -9,6 +9,8 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <rclcpp/rclcpp.hpp>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point.hpp"
+#include "nav_msgs/msg/occupancy_grid.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include <pcl/point_cloud.h>
@@ -16,6 +18,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include "pcl_conversions/pcl_conversions.h"
 
 #include "visualization_msgs/msg/marker.hpp"
+#include <visualization_msgs/msg/marker_array.hpp>
 
 /**
  * @class PCLAnalysis
@@ -30,8 +33,6 @@ class PCLAnalysis : public rclcpp::Node {
         void localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
         void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
-        void timerCallback();
-
     private: 
         bool pcl_time_;
         int count_;
@@ -42,17 +43,27 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_ground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_nonground_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         cloud_cluster_pub_;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         planning_pcl_pub_;
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                percent_above_pub_;
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       trail_line_pub_;
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  trail_ends_pub_;
+        rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr       trail_goal_pub_;
+        rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr          density_grid_pub_;
 
         rclcpp::Time last_pub_time_;
 
         // Main input pointcloud holder
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_latest_{new pcl::PointCloud<pcl::PointXYZ>()};
+        bool cloud_init_;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_regional_{new pcl::PointCloud<pcl::PointXYZ>()};
+        bool has_first_trailpt_;
+        geometry_msgs::msg::PoseStamped last_trail_point_;
+        double planning_horizon_;
 
         // Trail line
         visualization_msgs::msg::Marker trail_marker_;
         bool do_trail_;
+        bool trail_goal_enabled_;
+        rclcpp::Service<rcl_interfaces::srv::SetParametersAtomically>::SharedPtr trail_enabled_service_;
 
         // Params
         double  pub_rate_;
@@ -65,6 +76,10 @@ class PCLAnalysis : public rclcpp::Node {
 
         geometry_msgs::msg::PoseStamped current_pose_;
 
+        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+        void makeRegionalGrid();
+
+        void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta_out);
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
         pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
@@ -90,6 +105,10 @@ class PCLAnalysis : public rclcpp::Node {
 
         // Determines percentage of pointcloud points above drone
         float get_percent_above(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+
+        bool setTrailsEnabled(const std::shared_ptr<rmw_request_id_t>/*request_header*/,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Request> req,
+                        const std::shared_ptr<rcl_interfaces::srv::SetParametersAtomically::Response> resp);
 
 }; // class PCLAnalysis
 
