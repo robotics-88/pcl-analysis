@@ -19,13 +19,12 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/filters/passthrough.h>
 
 #include <cmath>
+#include <thread>
 
 using std::placeholders::_1;
 
 PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
-    , pcl_time_(false)
-    , count_(0)
     , planning_horizon_(10.0)
     , do_trail_(false)
     , trail_goal_enabled_(false)
@@ -70,7 +69,7 @@ PCLAnalysis::PCLAnalysis()
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
-    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_to_use", 10);
+    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_to_use", 10);
 
     percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 
@@ -109,45 +108,22 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     pcl::fromROSMsg(*msg, *cloud);
     makeRegionalCloud(cloud);
 
-    // Only run processing at limited rate
-    rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
-    if (dur.seconds() < (1.0 / pub_rate_)) {
-        return;
-    }
-
     // Determine percentage of points above current location
     float percent = get_percent_above(cloud_regional_);
     std_msgs::msg::Float32 percent_above_msg;
     percent_above_msg.data = percent;
     percent_above_pub_->publish(percent_above_msg);
 
-    if (do_trail_) {
-        // Extract ground returns
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground(new pcl::PointCloud<pcl::PointXYZ>());
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
-        pmf_ground_extraction(cloud_regional_, cloud_ground, cloud_nonground);
-
-        // Cluster ground returns to find the trail
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
-        findTrail(cloud_ground, cloud_clustered);
-
-        // Convert to ROS msg and publish
-        sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
-        pcl::toROSMsg(*cloud_ground, cloud_ground_msg);
-        pcl::toROSMsg(*cloud_nonground, cloud_nonground_msg);
-        pcl::toROSMsg(*cloud_clustered, cloud_clustered_msg);
-        cloud_ground_pub_->publish(cloud_ground_msg);
-        cloud_nonground_pub_->publish(cloud_nonground_msg);
-        cloud_clustered_msg.header = cloud_ground_msg.header;
-        cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
-        cloud_cluster_pub_->publish(cloud_clustered_msg);
-
-        trail_line_pub_->publish(trail_marker_);
+    // Only run processing at limited rate
+    rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
+    if (dur.seconds() < (1.0 / pub_rate_)) {
+        return;
+    }
+    else if (do_trail_) {
+        std::thread{std::bind(&PCLAnalysis::doGroundAndTrail, this, _1), cloud_regional_}.detach();
+        last_pub_time_ = this->get_clock()->now();
     }
 
-    pcl_time_ = false;
-
-    last_pub_time_ = this->get_clock()->now();
 }
 
 void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
@@ -217,6 +193,30 @@ void PCLAnalysis::makeRegionalGrid() {
     }
 
     density_grid_pub_->publish(*density_grid);
+}
+
+void PCLAnalysis::doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+    // Extract ground returns
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
+    pmf_ground_extraction(cloud, cloud_ground, cloud_nonground);
+
+    // Cluster ground returns to find the trail
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
+    findTrail(cloud_ground, cloud_clustered);
+
+    // Convert to ROS msg and publish
+    sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
+    pcl::toROSMsg(*cloud_ground, cloud_ground_msg);
+    pcl::toROSMsg(*cloud_nonground, cloud_nonground_msg);
+    pcl::toROSMsg(*cloud_clustered, cloud_clustered_msg);
+    cloud_ground_pub_->publish(cloud_ground_msg);
+    cloud_nonground_pub_->publish(cloud_nonground_msg);
+    cloud_clustered_msg.header = cloud_ground_msg.header;
+    cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
+    cloud_cluster_pub_->publish(cloud_clustered_msg);
+
+    trail_line_pub_->publish(trail_marker_);
 }
 
 void PCLAnalysis::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
@@ -343,7 +343,7 @@ void PCLAnalysis::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr c
             has_first_trailpt_ = true;
         }
         geometry_msgs::msg::PoseStamped point_msg;
-        point_msg.header.frame_id = "map";
+        point_msg.header.frame_id = "map"; // TODO pull launch arg through
         point_msg.header.stamp = this->get_clock()->now();
         point_msg.pose.position = send_point;
         trail_goal_pub_->publish(point_msg);

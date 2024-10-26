@@ -34,8 +34,6 @@ class PCLAnalysis : public rclcpp::Node {
         void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
     private: 
-        bool pcl_time_;
-        int count_;
         std::string     point_cloud_topic_;
         rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr    mavros_local_pos_subscriber_;
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
@@ -78,6 +76,8 @@ class PCLAnalysis : public rclcpp::Node {
 
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
         void makeRegionalGrid();
+
+        void doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
 
         void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta_out);
         void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
