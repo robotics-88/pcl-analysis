@@ -61,17 +61,15 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pmf_initial_distance", pmf_initial_distance_);
     this->get_parameter("pmf_max_distance", pmf_max_distance_);
 
-    auto sensor_qos = rclcpp::SensorDataQoS();
-
     // Set up pubs and subs
-    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", sensor_qos, std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
 
-    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, sensor_qos, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
+    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
-    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_to_use", sensor_qos);
+    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_to_use", 10);
 
     percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 
