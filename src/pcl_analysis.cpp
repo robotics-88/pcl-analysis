@@ -61,15 +61,17 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pmf_initial_distance", pmf_initial_distance_);
     this->get_parameter("pmf_max_distance", pmf_max_distance_);
 
-    // Set up pubs and subs
-    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+    auto sensor_qos = rclcpp::SensorDataQoS();
 
-    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
+    // Set up pubs and subs
+    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", sensor_qos, std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+
+    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, sensor_qos, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
     cloud_ground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_ground", 10);
     cloud_nonground_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_nonground", 10);
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
-    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_to_use", 10);
+    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_to_use", sensor_qos);
 
     percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 
@@ -106,7 +108,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     // Convert ROS msg to PCL and store
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
-    makeRegionalCloud(cloud);
+    makeRegionalCloud(cloud, msg->header);
 
     // Determine percentage of points above current location
     float percent = get_percent_above(cloud_regional_);
@@ -126,13 +128,14 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
 
 }
 
-void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header) {
     if (!cloud_init_) {
         cloud_regional_ = cloud;
         cloud_init_ = true;
-        return;
     }
-    *cloud_regional_ += *cloud;
+    else {
+        *cloud_regional_ += *cloud;
+    }
     rclcpp::Time tstart = this->get_clock()->now();
     // Cut off to local area
 
@@ -155,24 +158,24 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
 
     // Down sample, filter by voxel
     voxel_grid_filter(cloud_regional_, voxel_grid_leaf_size_);
-    rclcpp::Time tend = this->get_clock()->now();
 
     sensor_msgs::msg::PointCloud2 cloud_msg;
     pcl::toROSMsg(*cloud_regional_, cloud_msg);
+    cloud_msg.header = header;
     planning_pcl_pub_->publish(cloud_msg);
+    rclcpp::Time tend = this->get_clock()->now();
 
-    makeRegionalGrid();
+    makeRegionalGrid(header);
 }
 
-void PCLAnalysis::makeRegionalGrid() {
+void PCLAnalysis::makeRegionalGrid(const std_msgs::msg::Header header) {
     auto density_grid = std::make_shared<nav_msgs::msg::OccupancyGrid>();
     double resolution = 0.5;
     double sz = (planning_horizon_ / resolution) * 2;
     double origin_x = current_pose_.pose.position.x - (planning_horizon_);
     double origin_y = current_pose_.pose.position.y - (planning_horizon_);
      // Initialize occupancy grid message
-    density_grid->header.frame_id = "map";
-    density_grid->header.stamp = this->get_clock()->now();
+    density_grid->header = header;
     density_grid->info.resolution = resolution;
     density_grid->info.width = sz;
     density_grid->info.height = sz;

@@ -74,8 +74,8 @@ class PCLAnalysis : public rclcpp::Node {
 
         geometry_msgs::msg::PoseStamped current_pose_;
 
-        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
-        void makeRegionalGrid();
+        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header);
+        void makeRegionalGrid(const std_msgs::msg::Header header);
 
         void doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
 
