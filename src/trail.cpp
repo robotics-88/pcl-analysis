@@ -67,7 +67,6 @@ Trail::Trail()
     cloud_cluster_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_clusters", 10);
 
     trail_line_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/trail_line", 10);
-    trail_marker_.header.frame_id = "map";
     trail_marker_.scale.x = 3.0;
     trail_marker_.type = visualization_msgs::msg::Marker::LINE_STRIP;
     trail_marker_.action = visualization_msgs::msg::Marker::ADD;
@@ -97,6 +96,7 @@ void Trail::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ms
     // Convert ROS msg to PCL and store
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
+    std_msgs::msg::Header header = msg->header;
 
     // Only run processing at limited rate
     rclcpp::Duration dur = this->get_clock()->now() - last_pub_time_;
@@ -104,13 +104,13 @@ void Trail::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr ms
         return;
     }
     else {
-        doGroundAndTrail(cloud);
+        doGroundAndTrail(cloud, header);
         last_pub_time_ = this->get_clock()->now();
     }
 
 }
 
-void Trail::doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+void Trail::doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header) {
     // Extract ground returns
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ground(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_nonground(new pcl::PointCloud<pcl::PointXYZ>());
@@ -118,7 +118,7 @@ void Trail::doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
 
     // Cluster ground returns to find the trail
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered(new pcl::PointCloud<pcl::PointXYZ>());
-    findTrail(cloud_ground, cloud_clustered);
+    findTrail(cloud_ground, header, cloud_clustered);
 
     // Convert to ROS msg and publish
     sensor_msgs::msg::PointCloud2 cloud_ground_msg, cloud_nonground_msg, cloud_clustered_msg;
@@ -127,14 +127,14 @@ void Trail::doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
     pcl::toROSMsg(*cloud_clustered, cloud_clustered_msg);
     cloud_ground_pub_->publish(cloud_ground_msg);
     cloud_nonground_pub_->publish(cloud_nonground_msg);
-    cloud_clustered_msg.header = cloud_ground_msg.header;
-    cloud_clustered_msg.header.frame_id = "map"; // TODO why is it sometimes missing the frame?
+    cloud_clustered_msg.header = header;
     cloud_cluster_pub_->publish(cloud_clustered_msg);
 
+    trail_marker_.header = header;
     trail_line_pub_->publish(trail_marker_);
 }
 
-void Trail::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+void Trail::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header,
                                       pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered) {
     // Set up the clustering
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
@@ -167,10 +167,10 @@ void Trail::findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     extract.filter(*cloud_clustered);
 
     // Extract line segment and append to trail marker list
-    extractLineSegment(cloud_clustered);
+    extractLineSegment(cloud_clustered, header);
 }
 
-void Trail::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered) {
+void Trail::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered, const std_msgs::msg::Header header) {
     // Perform RANSAC plane fitting
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
@@ -209,7 +209,7 @@ void Trail::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_c
     yellow.g = 1.0;
     yellow.b = 0;
     yellow.a = 1.0;
-    m.header.frame_id = "map";
+    m.header = header;
     double scale = 1.0;
     m.scale.x = scale;
     m.scale.y = scale;
@@ -258,8 +258,7 @@ void Trail::extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_c
             has_first_trailpt_ = true;
         }
         geometry_msgs::msg::PoseStamped point_msg;
-        point_msg.header.frame_id = "map"; // TODO pull launch arg through
-        point_msg.header.stamp = this->get_clock()->now();
+        point_msg.header = header;
         point_msg.pose.position = send_point;
         trail_goal_pub_->publish(point_msg);
         last_trail_point_ = point_msg;

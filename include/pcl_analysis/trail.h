@@ -70,14 +70,14 @@ class Trail : public rclcpp::Node {
 
         geometry_msgs::msg::PoseStamped current_pose_;
 
-        void doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+        void doGroundAndTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header);
 
         void findAngle(const double x1, const double y1, const double theta1, const double x2, const double y2, double &theta_out);
-        void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+        void findTrail(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header,
                              pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
         pcl::PointCloud<pcl::PointXYZ>::Ptr findMaximumPlanar(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered,
                                                          const std::vector<pcl::PointIndices> cluster_indices);
-        void extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered);
+        void extractLineSegment(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustered, const std_msgs::msg::Header header);
 
         // Segments out a plane from a pointcloud including points within segment_distance_threshold_ of plane model
         void segment_plane(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
