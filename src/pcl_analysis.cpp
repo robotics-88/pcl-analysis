@@ -16,7 +16,7 @@ using std::placeholders::_1;
 
 PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
-    , planning_horizon_(10.0)
+    , planning_horizon_(6.0)
     , point_cloud_topic_("")
     , voxel_grid_leaf_size_(0.1)
     , cloud_init_(false)
@@ -26,10 +26,12 @@ PCLAnalysis::PCLAnalysis()
     this->declare_parameter("point_cloud_topic", point_cloud_topic_);
     this->declare_parameter("point_cloud_aggregated", pointcloud_out_topic);
     this->declare_parameter("voxel_grid_leaf_size", voxel_grid_leaf_size_);
+    this->declare_parameter("planning_horizon", planning_horizon_);
 
     this->get_parameter("point_cloud_topic", point_cloud_topic_);
     this->get_parameter("point_cloud_aggregated", pointcloud_out_topic);
     this->get_parameter("voxel_grid_leaf_size", voxel_grid_leaf_size_);
+    this->get_parameter("planning_horizon", planning_horizon_);
 
     // Set up pubs and subs
     mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
