@@ -18,7 +18,7 @@ PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
     , planning_horizon_(6.0)
     , point_cloud_topic_("")
-    , voxel_grid_leaf_size_(0.1)
+    , voxel_grid_leaf_size_(0.01)
     , cloud_init_(false)
 {
     // Get params
@@ -93,7 +93,7 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
     rclcpp::Time t2 = this->get_clock()->now();
 
     // Down sample, filter by voxel
-    // voxel_grid_filter(cloud_regional_, voxel_grid_leaf_size_);
+    voxel_grid_filter(cloud_regional_, voxel_grid_leaf_size_);
 
     sensor_msgs::msg::PointCloud2 cloud_msg;
     pcl::toROSMsg(*cloud_regional_, cloud_msg);
