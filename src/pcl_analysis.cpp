@@ -18,7 +18,7 @@ PCLAnalysis::PCLAnalysis()
     : Node("pcl_analysis")
     , planning_horizon_(6.0)
     , point_cloud_topic_("")
-    , voxel_grid_leaf_size_(0.01)
+    , voxel_grid_leaf_size_(0.05)
     , cloud_init_(false)
 {
     // Get params
