@@ -8,7 +8,7 @@
     <node pkg="pcl_analysis" exec="pcl_analysis_node" respawn="false" output="screen">
         <param name="point_cloud_topic" value="$(var point_cloud_topic)"/>
         <param name="point_cloud_aggregated" value="$(var point_cloud_aggregated)"/>
-        <param name="voxel_grid_leaf_size" value="0.25"/>
+        <param name="voxel_grid_leaf_size" value="0.05"/>
         <param name="planning_horizon" value="$(var planning_horizon)"/>
     </node>
 
