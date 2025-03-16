@@ -16,17 +16,22 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
 find_package(OpenCV REQUIRED)
+find_package(GDAL REQUIRED)
 find_package(PCL REQUIRED)
 
 include_directories(include 
   ${OpenCV_INCLUDE_DIRS} 
   ${PCL_INCLUDE_DIRS}
+  ${GDAL_INCLUDE_DIRS}
 )
 
 link_directories(${OpenCV_LIB_DIR} ${PCL_LIB_DIR})
@@ -113,14 +118,20 @@ add_executable(powerline_node src/powerline_node.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 ament_target_dependencies(powerline_lib
+  cv_bridge
   pcl_ros
   rclcpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
   std_msgs
 )
 
 target_link_libraries(powerline_node
   powerline_lib
 	${PCL_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  ${GDAL_LIBRARIES}
 )
 
 #############
