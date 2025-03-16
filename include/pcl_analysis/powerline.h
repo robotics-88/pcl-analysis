@@ -31,6 +31,7 @@ class PowerlineDetector : public rclcpp::Node {
     private: 
         std::string     point_cloud_topic_;
         cv::Mat distance_matrix_;
+        std::map<std::pair<int, int>, std::vector<float>> distance_map;  // Store multiple distances per pixel
         cv::Size image_size_;
         double meters_per_pixel_;
         double origin_x_, origin_y_;

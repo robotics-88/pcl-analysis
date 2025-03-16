@@ -3,7 +3,7 @@
     <arg name="point_cloud_topic" default="/cloud_registered"/>
     <arg name="point_cloud_aggregated" default="/cloud_to_use"/>
     <arg name="do_trail" default="false"/>
-    <arg name="do_powerline" default="false"/>
+    <arg name="do_powerline" default="true"/>
     <arg name="planning_horizon" default="6.0"/>
 
     <node pkg="pcl_analysis" exec="pcl_analysis_node" respawn="false" output="screen">

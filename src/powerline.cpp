@@ -187,6 +187,7 @@ void PowerlineDetector::updateImage(const pcl::PointXYZ &point, float distance)
     {
         float &current_val = distance_matrix_.at<float>(img_y, img_x);
         current_val = std::min(current_val, distance);
+        distance_map[{img_x, img_y}].push_back(distance);
     }
 }
 
@@ -218,36 +219,50 @@ void PowerlineDetector::saveGeoTIFF()
     // Ensure the directory exists
     std::filesystem::create_directories(output_dir);
 
-    GDALAllRegister();
-    GDALDriver *driver = GetGDALDriverManager()->GetDriverByName("GTiff");
-    GDALDataset *dataset = driver->Create(filename.c_str(), distance_matrix_.cols, distance_matrix_.rows, 3, GDT_Byte, nullptr);
+    // Convert distance_map to a median distance matrix
+    cv::Mat median_distance_matrix(image_size_, CV_32F, std::numeric_limits<float>::max());
 
-    if (!dataset)
+    int populated_pixels = 0;
+
+    for (const auto &[pixel, distances] : distance_map)
     {
-        RCLCPP_ERROR(this->get_logger(), "Failed to create GeoTIFF file.");
+        int x = pixel.first;
+        int y = pixel.second;
+
+        if (!distances.empty())
+        {
+            std::vector<float> sorted_distances = distances;
+            std::sort(sorted_distances.begin(), sorted_distances.end());
+
+            // Compute median
+            float median_distance;
+            size_t size = sorted_distances.size();
+            if (size % 2 == 0)
+                median_distance = (sorted_distances[size / 2 - 1] + sorted_distances[size / 2]) / 2.0;
+            else
+                median_distance = sorted_distances[size / 2];
+
+            median_distance_matrix.at<float>(y, x) = median_distance;
+            populated_pixels++;
+        }
+    }
+
+    // Debug: Ensure at least some pixels were populated
+    RCLCPP_INFO(this->get_logger(), "Populated %d pixels in the TIFF.", populated_pixels);
+    if (populated_pixels == 0)
+    {
+        RCLCPP_WARN(this->get_logger(), "Warning: No valid pixels were populated.");
         return;
     }
 
-    // Set CRS to **WGS84 UTM Zone 10N** (EPSG:32610)
-    OGRSpatialReference srs;
-    srs.importFromEPSG(32610); // Use 32710 if in the southern hemisphere
+    // Convert the median matrix to a color image
+    cv::Mat color_image(image_size_, CV_8UC3, cv::Scalar(0, 0, 0));
 
-    char *wkt = nullptr;
-    srs.exportToWkt(&wkt);
-    dataset->SetProjection(wkt);
-    CPLFree(wkt);
-
-    double geotransform[6] = {utm_x, meters_per_pixel_, 0, utm_y, 0, -meters_per_pixel_};
-    dataset->SetGeoTransform(geotransform);
-
-    // Convert raw distance matrix to color image
-    cv::Mat color_image(distance_matrix_.rows, distance_matrix_.cols, CV_8UC3, cv::Scalar(0, 0, 0));
-
-    for (int y = 0; y < distance_matrix_.rows; y++)
+    for (int y = 0; y < median_distance_matrix.rows; y++)
     {
-        for (int x = 0; x < distance_matrix_.cols; x++)
+        for (int x = 0; x < median_distance_matrix.cols; x++)
         {
-            float distance = distance_matrix_.at<float>(y, x);
+            float distance = median_distance_matrix.at<float>(y, x);
 
             if (distance == std::numeric_limits<float>::max())
                 continue; // Ignore uninitialized pixels
@@ -256,22 +271,37 @@ void PowerlineDetector::saveGeoTIFF()
 
             if (distance < 3.0)
             {
-                pixel = cv::Vec3b(0, 0, 255); // Red -- too close
+                pixel = cv::Vec3b(0, 0, 255); // Red
             }
             else if (distance < 10.0)
             {
-                pixel = cv::Vec3b(0, 255, 255); // Yellow -- encroaching, monitor
+                pixel = cv::Vec3b(0, 255, 255); // Yellow
             }
             else
             {
-                pixel = cv::Vec3b(0, 255, 0); // Green -- safe
+                pixel = cv::Vec3b(0, 255, 0); // Green
             }
         }
     }
 
-    // ✅ Convert BGR → RGB (since GDAL expects RGB format)
+    // Convert BGR → RGB for GDAL compatibility
     cv::Mat color_image_rgb;
     cv::cvtColor(color_image, color_image_rgb, cv::COLOR_BGR2RGB);
+
+    // Write to GeoTIFF
+    GDALAllRegister();
+    GDALDriver *driver = GetGDALDriverManager()->GetDriverByName("GTiff");
+    GDALDataset *dataset = driver->Create(filename.c_str(), color_image_rgb.cols, color_image_rgb.rows, 3, GDT_Byte, nullptr);
+
+    OGRSpatialReference srs;
+    srs.importFromEPSG(32610);
+    char *wkt = nullptr;
+    srs.exportToWkt(&wkt);
+    dataset->SetProjection(wkt);
+    CPLFree(wkt);
+
+    double geotransform[6] = {utm_x, meters_per_pixel_, 0, utm_y, 0, -meters_per_pixel_};
+    dataset->SetGeoTransform(geotransform);
 
     // Split channels for GeoTIFF writing
     cv::Mat channels[3];
