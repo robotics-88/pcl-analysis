@@ -119,6 +119,7 @@ add_executable(powerline_node src/powerline_node.cpp)
 ## same as for the library above
 ament_target_dependencies(powerline_lib
   cv_bridge
+  geometry_msgs
   pcl_ros
   rclcpp
   tf2

@@ -35,6 +35,7 @@ PowerlineDetector::PowerlineDetector()
     , origin_y_(-250)
     , tf_buffer_(this->get_clock())
     , tf_listener_(tf_buffer_)
+    , detection_enabled_(false)
 {
     // Get params
     std::string pointcloud_out_topic;
@@ -43,10 +44,11 @@ PowerlineDetector::PowerlineDetector()
     this->get_parameter("point_cloud_topic", point_cloud_topic_);
 
     // Set up pubs and subs
-    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("powerline_image", 10);
+    pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10, std::bind(&PowerlineDetector::poseCallback, this, std::placeholders::_1));
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PowerlineDetector::pointCloudCallback, this, _1));
     powerline_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("power_line_cloud", 10);
     distance_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("power_line_distances", 10);
+    image_pub_ = this->create_publisher<sensor_msgs::msg::Image>("powerline_image", 10);
 
     // Initialize OpenCV image
     distance_matrix_ = cv::Mat(image_size_, CV_32F, std::numeric_limits<float>::max());
@@ -56,7 +58,23 @@ PowerlineDetector::~PowerlineDetector(){
     saveGeoTIFF();
 }
 
+void PowerlineDetector::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+    {
+        double z_height = msg->pose.position.z;
+
+        if (!detection_enabled_ && z_height > 5.0)
+        {
+            detection_enabled_ = true;
+            RCLCPP_INFO(this->get_logger(), "✅ MAV altitude %.2f > 5m → Powerline detection ENABLED!", z_height);
+        }
+        // TODO I dont think we want to turn it back off, but TBD
+    }
+
 void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    if (!detection_enabled_) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "⚠ Waiting for MAV altitude > 5m...");
+        return;
+    }
     // Convert ROS msg to PCL and store
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);

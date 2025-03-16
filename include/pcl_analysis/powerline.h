@@ -8,6 +8,7 @@ Author: Erin Linebarger <erin@robotics88.com>
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <pcl/point_cloud.h>
 #include "pcl/point_types.h"
 #include "pcl_conversions/pcl_conversions.h"
@@ -37,12 +38,15 @@ class PowerlineDetector : public rclcpp::Node {
         double origin_x_, origin_y_;
         tf2_ros::Buffer tf_buffer_;
         tf2_ros::TransformListener tf_listener_;
+        bool detection_enabled_;
 
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
+        rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr    pose_sub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         powerline_pub_;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         distance_pub_;
         rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr               image_pub_;
 
+        void poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
         void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
         void detectPowerLines(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
         void updateImage(const pcl::PointXYZ &point, float distance);
