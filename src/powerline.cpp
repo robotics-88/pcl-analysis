@@ -287,11 +287,12 @@ void PowerlineDetector::saveGeoTIFF()
 
             cv::Vec3b &pixel = color_image.at<cv::Vec3b>(y, x);
 
-            if (distance < 3.0)
+            // Convert m to ft 
+            if (distance * 3.281 < 3.0)
             {
                 pixel = cv::Vec3b(0, 0, 255); // Red
             }
-            else if (distance < 10.0)
+            else if (distance * 3.281 < 10.0)
             {
                 pixel = cv::Vec3b(0, 255, 255); // Yellow
             }
