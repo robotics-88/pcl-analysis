@@ -51,13 +51,25 @@ void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::S
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-    // Convert ROS msg to PCL and store
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::fromROSMsg(*msg, *cloud);
-    makeRegionalCloud(cloud, msg->header);
+    if (msg->data.empty()) {
+        RCLCPP_WARN(this->get_logger(), "Received empty point cloud");
+    }
+    else {
+        // Convert ROS msg to PCL and store
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::fromROSMsg(*msg, *cloud);
+        makeRegionalCloud(cloud, msg->header);
+    }
+    // Publish grid either way
+    makeRegionalGrid(msg->header);
 
-    // Determine percentage of points above current location
-    float percent = get_percent_above(cloud_regional_);
+    // Publish percentage of points above current location
+    float percent = 0.0;
+    if (!cloud_regional_->points.empty()) {
+        // Determine percentage of points above current location
+        percent = get_percent_above(cloud_regional_);
+    }
+
     std_msgs::msg::Float32 percent_above_msg;
     percent_above_msg.data = percent;
     percent_above_pub_->publish(percent_above_msg);
@@ -83,6 +95,9 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
 	double hi = current_pose_.pose.position.x + planning_horizon_;
 	pass.setFilterLimits (lo, hi);
 	pass.filter (*cloud_regional_);
+    if (cloud_regional_->points.empty()) {
+        return;
+    }
 	// Y
 	pass.setInputCloud (cloud_regional_);
 	pass.setFilterFieldName ("y");
@@ -90,6 +105,9 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
 	hi = current_pose_.pose.position.y + planning_horizon_;
 	pass.setFilterLimits (lo, hi);
 	pass.filter (*cloud_regional_);
+    if (cloud_regional_->points.empty()) {
+        return;
+    }
     rclcpp::Time t2 = this->get_clock()->now();
 
     // Down sample, filter by voxel
@@ -100,8 +118,6 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
     cloud_msg.header = header;
     planning_pcl_pub_->publish(cloud_msg);
     rclcpp::Time tend = this->get_clock()->now();
-
-    makeRegionalGrid(header);
 }
 
 void PCLAnalysis::makeRegionalGrid(const std_msgs::msg::Header header) {
