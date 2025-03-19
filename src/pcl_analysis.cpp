@@ -58,8 +58,15 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
         // Convert ROS msg to PCL and store
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::fromROSMsg(*msg, *cloud);
-        makeRegionalCloud(cloud, msg->header);
+        makeRegionalCloud(cloud);
     }
+    // Publish cloud either way
+    sensor_msgs::msg::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*cloud_regional_, cloud_msg);
+    cloud_msg.header = msg->header;
+    planning_pcl_pub_->publish(cloud_msg);
+    rclcpp::Time tend = this->get_clock()->now();
+
     // Publish grid either way
     makeRegionalGrid(msg->header);
 
@@ -76,7 +83,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
 
 }
 
-void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header) {
+void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
     if (!cloud_init_) {
         cloud_regional_ = cloud;
         cloud_init_ = true;
@@ -112,12 +119,6 @@ void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cl
 
     // Down sample, filter by voxel
     voxel_grid_filter(cloud_regional_, voxel_grid_leaf_size_);
-
-    sensor_msgs::msg::PointCloud2 cloud_msg;
-    pcl::toROSMsg(*cloud_regional_, cloud_msg);
-    cloud_msg.header = header;
-    planning_pcl_pub_->publish(cloud_msg);
-    rclcpp::Time tend = this->get_clock()->now();
 }
 
 void PCLAnalysis::makeRegionalGrid(const std_msgs::msg::Header header) {
