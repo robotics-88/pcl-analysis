@@ -50,7 +50,7 @@ class PCLAnalysis : public rclcpp::Node {
 
         geometry_msgs::msg::PoseStamped current_pose_;
 
-        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, const std_msgs::msg::Header header);
+        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
         void makeRegionalGrid(const std_msgs::msg::Header header);
 
         // Runs a voxel grid filter to downsample pointcloud into 3D grid of leaf_size
