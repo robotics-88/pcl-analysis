@@ -16,6 +16,8 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pcl/point_cloud.h>
 #include "pcl/point_types.h"
 #include "pcl_conversions/pcl_conversions.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
 
 
 /**
@@ -40,24 +42,30 @@ class PCLAnalysis : public rclcpp::Node {
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                percent_above_pub_;
         rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr          density_grid_pub_;
 
+        std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+        std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+
         // Main input pointcloud holder
         bool cloud_init_;
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_regional_{new pcl::PointCloud<pcl::PointXYZ>()};
+        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_regional_{new pcl::PointCloud<pcl::PointXYZI>()};
         double planning_horizon_;
 
         // Params
-        float   voxel_grid_leaf_size_;
+        float       voxel_grid_leaf_size_;
+        bool        save_pcl_;
+        std::string data_dir_;
 
         geometry_msgs::msg::PoseStamped current_pose_;
+        pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_save_;
 
-        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+        void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
         void makeRegionalGrid(const std_msgs::msg::Header header);
 
         // Runs a voxel grid filter to downsample pointcloud into 3D grid of leaf_size
-        void voxel_grid_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float leaf_size);
+        void voxel_grid_filter(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, float leaf_size);
 
         // Determines percentage of pointcloud points above drone
-        float get_percent_above(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+        float get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
 }; // class PCLAnalysis
 
