@@ -14,7 +14,7 @@
         <param name="planning_horizon" value="$(var planning_horizon)"/>
         <param name="save_pcl" value="$(var save_pcl)"/>
         <param name="data_dir" value="$(var data_dir)"/>
-        <param name="utm_rotation" value="11.4592"/>
+        <param name="utm_rotation" value="0.0"/>
     </node>
 
     <node pkg="pcl_analysis" exec="trail_node" respawn="false" output="screen" if="$(var do_trail)">

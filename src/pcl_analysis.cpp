@@ -95,13 +95,21 @@ PCLAnalysis::~PCLAnalysis(){
             RCLCPP_INFO(this->get_logger(), "Rotating PCL manually by %f degrees", utm_rotation_);
         }
 
-        // Rotate utm tf by manual offset rotation
-        tf2::Quaternion q;
-        q.setRPY(0, 0, utm_rotation_ * M_PI / 180.0);
-        q.normalize();
-        geometry_msgs::msg::Quaternion q_tf;
-        tf2::convert(q, q_tf);
-        utm_tf.transform.rotation = q_tf;
+        // Original quaternion as TF
+        tf2::Quaternion q_tf;
+        tf2::convert(utm_tf.transform.rotation, q_tf);
+
+        // Get rotation quaternion
+        tf2::Quaternion q_rot;
+        q_rot.setRPY(0, 0, utm_rotation_ * M_PI / 180.0);
+        q_rot.normalize();
+
+        tf2::Quaternion q_res = q_rot * q_tf;
+        q_res.normalize();
+
+        geometry_msgs::msg::Quaternion q_final;
+        tf2::convert(q_res, q_final);
+        utm_tf.transform.rotation = q_final;
 
         pdal::PointTable table;
         table.layout()->registerDim(pdal::Dimension::Id::X);
