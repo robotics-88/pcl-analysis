@@ -23,6 +23,8 @@ find_package(visualization_msgs REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
+find_package(GeographicLib REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 find_package(PDAL REQUIRED)
@@ -70,6 +72,7 @@ ament_target_dependencies(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
 	${PCL_LIBRARIES}
   ${PDAL_LIBRARIES}
+  ${GeographicLib_LIBRARIES}
 )
 
 ## Specify libraries to link a library or executable target against

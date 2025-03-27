@@ -12,6 +12,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include "geometry_msgs/msg/point.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include <pcl/point_cloud.h>
 #include "pcl/point_types.h"
@@ -31,11 +32,13 @@ class PCLAnalysis : public rclcpp::Node {
         ~PCLAnalysis();
 
         void localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+        void globalPositionCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
         void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
     private: 
-        std::string     point_cloud_topic_;
+        std::string                                                         point_cloud_topic_;
         rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr    mavros_local_pos_subscriber_;
+        rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr        mavros_global_pos_subscriber_;
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
 
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         planning_pcl_pub_;
@@ -55,7 +58,9 @@ class PCLAnalysis : public rclcpp::Node {
         bool        save_pcl_;
         std::string data_dir_;
 
+        double utm_rotation_;
         geometry_msgs::msg::PoseStamped current_pose_;
+        sensor_msgs::msg::NavSatFix     current_ll_;
         pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_save_;
 
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);

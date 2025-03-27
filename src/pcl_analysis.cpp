@@ -13,6 +13,8 @@ Author: Gus Meyer <gus@robotics88.com>
 #include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
 
+#include <GeographicLib/UTMUPS.hpp>
+
 #include <cmath>
 #include <thread>
 #include <boost/filesystem.hpp>
@@ -27,6 +29,7 @@ PCLAnalysis::PCLAnalysis()
     , point_cloud_topic_("")
     , voxel_grid_leaf_size_(0.05)
     , cloud_init_(false)
+    , utm_rotation_(0.0)
     , save_pcl_(false)
     , data_dir_("")
 {
@@ -38,6 +41,7 @@ PCLAnalysis::PCLAnalysis()
     this->declare_parameter("planning_horizon", planning_horizon_);
     this->declare_parameter("save_pcl", save_pcl_);
     this->declare_parameter("data_dir", data_dir_);
+    this->declare_parameter("utm_rotation", utm_rotation_);
 
     this->get_parameter("point_cloud_topic", point_cloud_topic_);
     this->get_parameter("point_cloud_aggregated", pointcloud_out_topic);
@@ -45,6 +49,7 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("planning_horizon", planning_horizon_);
     this->get_parameter("save_pcl", save_pcl_);
     this->get_parameter("data_dir", data_dir_);
+    this->get_parameter("utm_rotation", utm_rotation_);
 
     if (save_pcl_) {
         pcl_save_.reset(new pcl::PointCloud<pcl::PointXYZI>());
@@ -54,6 +59,7 @@ PCLAnalysis::PCLAnalysis()
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // Set up pubs and subs
+    mavros_global_pos_subscriber_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("/mavros/global_position/global", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::globalPositionCallback, this, _1));
     mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
 
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
@@ -85,6 +91,18 @@ PCLAnalysis::~PCLAnalysis(){
             return;
         }
 
+        if (utm_rotation_ != 0.0) {
+            RCLCPP_INFO(this->get_logger(), "Rotating PCL manually by %f degrees", utm_rotation_);
+        }
+
+        // Rotate utm tf by manual offset rotation
+        tf2::Quaternion q;
+        q.setRPY(0, 0, utm_rotation_ * M_PI / 180.0);
+        q.normalize();
+        geometry_msgs::msg::Quaternion q_tf;
+        tf2::convert(q, q_tf);
+        utm_tf.transform.rotation = q_tf;
+
         pdal::PointTable table;
         table.layout()->registerDim(pdal::Dimension::Id::X);
         table.layout()->registerDim(pdal::Dimension::Id::Y);
@@ -115,11 +133,17 @@ PCLAnalysis::~PCLAnalysis(){
         // Write to LAS file
         pcd_save_dir += file_name;
 
+        int utm_zone = GeographicLib::UTMUPS::StandardZone(current_ll_.latitude, current_ll_.longitude);
+
+        std::string code_pref = current_ll_.latitude > 0 ? "EPSG:326" : "EPSG:327";
+        std::string utm_zone_str = code_pref + std::to_string(utm_zone);
+
         pdal::BufferReader reader;
         reader.addView(pointView);
 
         pdal::Options opts;
         opts.add("filename", pcd_save_dir);
+        opts.add("a_srs", utm_zone_str.c_str());
         pdal::LasWriter writer;
         writer.setInput(reader);
         writer.setOptions(opts);
@@ -132,6 +156,10 @@ PCLAnalysis::~PCLAnalysis(){
 
 void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
     current_pose_ = *msg;
+}
+
+void PCLAnalysis::globalPositionCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+    current_ll_ = *msg;
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
