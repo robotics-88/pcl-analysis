@@ -59,6 +59,7 @@ class PCLAnalysis : public rclcpp::Node {
         // Params
         float       voxel_grid_leaf_size_;
         bool        save_pcl_;
+        bool        pcl_saved_;
         std::string data_dir_;
 
         double utm_rotation_;

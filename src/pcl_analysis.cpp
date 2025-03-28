@@ -31,6 +31,7 @@ PCLAnalysis::PCLAnalysis()
     , cloud_init_(false)
     , utm_rotation_(0.0)
     , save_pcl_(false)
+    , pcl_saved_(false)
     , data_dir_("")
     , pcl_save_filename_("pcl.laz")
 {
@@ -75,7 +76,7 @@ PCLAnalysis::PCLAnalysis()
 }
 
 PCLAnalysis::~PCLAnalysis(){
-    if (save_pcl_) {
+    if (save_pcl_ && !pcl_saved_) {
         savePcl(pcl_save_);
     }
 }
@@ -318,5 +319,6 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     writer.prepare(table);
     writer.execute(table);
 
+    pcl_saved_ = true;
     RCLCPP_INFO(this->get_logger(), "PCL saved to %s", pcd_save_dir.c_str());
 }
