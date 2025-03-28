@@ -56,7 +56,7 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("pcl_save_filename", pcl_save_filename_);
 
     if (save_pcl_) {
-        pcl_save_ = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
+        cloud_save_ = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
     }
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -77,7 +77,7 @@ PCLAnalysis::PCLAnalysis()
 
 PCLAnalysis::~PCLAnalysis(){
     if (save_pcl_ && !pcl_saved_) {
-        savePcl(pcl_save_);
+        savePcl(cloud_save_);
     }
 }
 
@@ -91,7 +91,7 @@ void PCLAnalysis::globalPositionCallback(const sensor_msgs::msg::NavSatFix::Shar
 
 void PCLAnalysis::stateCallback(const mavros_msgs::msg::State::SharedPtr msg) {
     if (!msg->armed && current_state_.armed && save_pcl_) {
-        savePcl(pcl_save_);
+        savePcl(cloud_save_);
     }
 
     current_state_ = *msg;
@@ -109,8 +109,8 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
 
 
         if (save_pcl_) {
-            *pcl_save_ += *cloud;
-            pcl_save_->header = cloud->header;
+            *cloud_save_ += *cloud;
+            cloud_save_->header = cloud->header;
         }
     }
     // Publish cloud either way

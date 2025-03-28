@@ -66,7 +66,7 @@ class PCLAnalysis : public rclcpp::Node {
         geometry_msgs::msg::PoseStamped current_pose_;
         sensor_msgs::msg::NavSatFix     current_ll_;
         mavros_msgs::msg::State         current_state_;
-        pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_save_;
+        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_save_;
         std::string pcl_save_filename_;
 
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
