@@ -10,6 +10,7 @@ Author: Gus Meyer <gus@robotics88.com>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/point.hpp"
+#include "mavros_msgs/msg/state.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -33,12 +34,14 @@ class PCLAnalysis : public rclcpp::Node {
 
         void localPositionCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
         void globalPositionCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
+        void stateCallback(const mavros_msgs::msg::State::SharedPtr msg);
         void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
     private: 
         std::string                                                         point_cloud_topic_;
         rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr    mavros_local_pos_subscriber_;
         rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr        mavros_global_pos_subscriber_;
+        rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr            mavros_state_subscriber_;
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
 
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr         planning_pcl_pub_;
@@ -61,7 +64,9 @@ class PCLAnalysis : public rclcpp::Node {
         double utm_rotation_;
         geometry_msgs::msg::PoseStamped current_pose_;
         sensor_msgs::msg::NavSatFix     current_ll_;
+        mavros_msgs::msg::State         current_state_;
         pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_save_;
+        std::string pcl_save_filename_;
 
         void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
         void makeRegionalGrid(const std_msgs::msg::Header header);
@@ -71,6 +76,9 @@ class PCLAnalysis : public rclcpp::Node {
 
         // Determines percentage of pointcloud points above drone
         float get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
+
+        // Save pointcloud to file
+        void savePcl(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
 }; // class PCLAnalysis
 

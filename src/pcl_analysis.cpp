@@ -32,6 +32,7 @@ PCLAnalysis::PCLAnalysis()
     , utm_rotation_(0.0)
     , save_pcl_(false)
     , data_dir_("")
+    , pcl_save_filename_("pcl.laz")
 {
     // Get params
     std::string pointcloud_out_topic;
@@ -42,6 +43,7 @@ PCLAnalysis::PCLAnalysis()
     this->declare_parameter("save_pcl", save_pcl_);
     this->declare_parameter("data_dir", data_dir_);
     this->declare_parameter("utm_rotation", utm_rotation_);
+    this->declare_parameter("pcl_save_filename", pcl_save_filename_);
 
     this->get_parameter("point_cloud_topic", point_cloud_topic_);
     this->get_parameter("point_cloud_aggregated", pointcloud_out_topic);
@@ -50,9 +52,10 @@ PCLAnalysis::PCLAnalysis()
     this->get_parameter("save_pcl", save_pcl_);
     this->get_parameter("data_dir", data_dir_);
     this->get_parameter("utm_rotation", utm_rotation_);
+    this->get_parameter("pcl_save_filename", pcl_save_filename_);
 
     if (save_pcl_) {
-        pcl_save_.reset(new pcl::PointCloud<pcl::PointXYZI>());
+        pcl_save_ = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
     }
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -61,6 +64,7 @@ PCLAnalysis::PCLAnalysis()
     // Set up pubs and subs
     mavros_global_pos_subscriber_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("/mavros/global_position/global", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::globalPositionCallback, this, _1));
     mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+    mavros_state_subscriber_ = this->create_subscription<mavros_msgs::msg::State>("/mavros/state", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::stateCallback, this, _1));
 
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
@@ -71,94 +75,8 @@ PCLAnalysis::PCLAnalysis()
 }
 
 PCLAnalysis::~PCLAnalysis(){
-    if (save_pcl_ && pcl_save_->size() > 0) {
-        RCLCPP_INFO(this->get_logger(), "Saving PCL to file");
-        std::string file_name = "utm.las";
-
-        std::string pcd_save_dir = data_dir_ + "/PCL/";
-
-        if (!boost::filesystem::exists(pcd_save_dir)) {
-            boost::filesystem::create_directories(pcd_save_dir);
-        }
-
-        // Get UTM tf
-        geometry_msgs::msg::TransformStamped utm_tf;
-        try {
-            utm_tf = tf_buffer_->lookupTransform("utm", pcl_save_->header.frame_id, tf2::TimePointZero);
-        }
-        catch (tf2::TransformException &ex) {
-            RCLCPP_ERROR(this->get_logger(), "Could not transform: %s", ex.what());
-            return;
-        }
-
-        if (utm_rotation_ != 0.0) {
-            RCLCPP_INFO(this->get_logger(), "Rotating PCL manually by %f degrees", utm_rotation_);
-        }
-
-        // Original quaternion as TF
-        tf2::Quaternion q_tf;
-        tf2::convert(utm_tf.transform.rotation, q_tf);
-
-        // Get rotation quaternion
-        tf2::Quaternion q_rot;
-        q_rot.setRPY(0, 0, utm_rotation_ * M_PI / 180.0);
-        q_rot.normalize();
-
-        tf2::Quaternion q_res = q_rot * q_tf;
-        q_res.normalize();
-
-        geometry_msgs::msg::Quaternion q_final;
-        tf2::convert(q_res, q_final);
-        utm_tf.transform.rotation = q_final;
-
-        pdal::PointTable table;
-        table.layout()->registerDim(pdal::Dimension::Id::X);
-        table.layout()->registerDim(pdal::Dimension::Id::Y);
-        table.layout()->registerDim(pdal::Dimension::Id::Z);
-        table.layout()->registerDim(pdal::Dimension::Id::Intensity);
-
-        pdal::PointViewPtr pointView(new pdal::PointView(table));
-
-        // Convert PCL points to PDAL points
-        for (const auto& point : pcl_save_->points) {
-
-            // Create ROS point for UTM transformation
-            geometry_msgs::msg::Point point_ros;
-            point_ros.x = point.x;
-            point_ros.y = point.y;
-            point_ros.z = point.z;
-            tf2::doTransform(point_ros, point_ros, utm_tf);
-
-            // Save point
-            pdal::PointId id = pointView->size();
-            pointView->setField(pdal::Dimension::Id::X, id, point_ros.x);
-            pointView->setField(pdal::Dimension::Id::Y, id, point_ros.y);
-            pointView->setField(pdal::Dimension::Id::Z, id, point_ros.z);
-            pointView->setField(pdal::Dimension::Id::Intensity, id, point.intensity);
-            pointView->appendPoint(*pointView, id);
-        }
-
-        // Write to LAS file
-        pcd_save_dir += file_name;
-
-        int utm_zone = GeographicLib::UTMUPS::StandardZone(current_ll_.latitude, current_ll_.longitude);
-
-        std::string code_pref = current_ll_.latitude > 0 ? "EPSG:326" : "EPSG:327";
-        std::string utm_zone_str = code_pref + std::to_string(utm_zone);
-
-        pdal::BufferReader reader;
-        reader.addView(pointView);
-
-        pdal::Options opts;
-        opts.add("filename", pcd_save_dir);
-        opts.add("a_srs", utm_zone_str.c_str());
-        pdal::LasWriter writer;
-        writer.setInput(reader);
-        writer.setOptions(opts);
-        writer.prepare(table);
-        writer.execute(table);
-
-        RCLCPP_INFO(this->get_logger(), "PCL saved to %s", pcd_save_dir.c_str());
+    if (save_pcl_) {
+        savePcl(pcl_save_);
     }
 }
 
@@ -168,6 +86,14 @@ void PCLAnalysis::localPositionCallback(const geometry_msgs::msg::PoseStamped::S
 
 void PCLAnalysis::globalPositionCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
     current_ll_ = *msg;
+}
+
+void PCLAnalysis::stateCallback(const mavros_msgs::msg::State::SharedPtr msg) {
+    if (!msg->armed && current_state_.armed && save_pcl_) {
+        savePcl(pcl_save_);
+    }
+
+    current_state_ = *msg;
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -300,3 +226,97 @@ float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
     return static_cast<float>(num_pts_above) / cloud->points.size();
 }
 
+void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
+    if (cloud->size() < 1) {
+        RCLCPP_WARN(this->get_logger(), "PCL save requested but no PCL to save");
+        return;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Saving PCL to file");
+
+    std::string pcd_save_dir = data_dir_ + "/PCL/";
+
+    if (!boost::filesystem::exists(pcd_save_dir)) {
+        boost::filesystem::create_directories(pcd_save_dir);
+    }
+
+    // Get UTM tf
+    geometry_msgs::msg::TransformStamped utm_tf;
+    try {
+        utm_tf = tf_buffer_->lookupTransform("utm", cloud->header.frame_id, tf2::TimePointZero);
+    }
+    catch (tf2::TransformException &ex) {
+        RCLCPP_ERROR(this->get_logger(), "Could not transform: %s", ex.what());
+        return;
+    }
+
+    if (utm_rotation_ != 0.0) {
+        RCLCPP_INFO(this->get_logger(), "Rotating PCL manually by %f degrees", utm_rotation_);
+    }
+
+    // Original quaternion as TF
+    tf2::Quaternion q_tf;
+    tf2::convert(utm_tf.transform.rotation, q_tf);
+
+    // Get rotation quaternion
+    tf2::Quaternion q_rot;
+    q_rot.setRPY(0, 0, utm_rotation_ * M_PI / 180.0);
+    q_rot.normalize();
+
+    tf2::Quaternion q_res = q_rot * q_tf;
+    q_res.normalize();
+
+    geometry_msgs::msg::Quaternion q_final;
+    tf2::convert(q_res, q_final);
+    utm_tf.transform.rotation = q_final;
+
+    pdal::PointTable table;
+    table.layout()->registerDim(pdal::Dimension::Id::X);
+    table.layout()->registerDim(pdal::Dimension::Id::Y);
+    table.layout()->registerDim(pdal::Dimension::Id::Z);
+    table.layout()->registerDim(pdal::Dimension::Id::Intensity);
+
+    pdal::PointViewPtr pointView(new pdal::PointView(table));
+
+    // Convert PCL points to PDAL points
+    for (const auto& point : cloud->points) {
+
+        // Create ROS point for UTM transformation
+        geometry_msgs::msg::Point point_ros;
+        point_ros.x = point.x;
+        point_ros.y = point.y;
+        point_ros.z = point.z;
+        tf2::doTransform(point_ros, point_ros, utm_tf);
+
+        // Save point
+        pdal::PointId id = pointView->size();
+        pointView->setField(pdal::Dimension::Id::X, id, point_ros.x);
+        pointView->setField(pdal::Dimension::Id::Y, id, point_ros.y);
+        pointView->setField(pdal::Dimension::Id::Z, id, point_ros.z);
+        pointView->setField(pdal::Dimension::Id::Intensity, id, point.intensity);
+        pointView->appendPoint(*pointView, id);
+    }
+
+    // Write to LAS file
+    pcd_save_dir += pcl_save_filename_;
+
+    int utm_zone = GeographicLib::UTMUPS::StandardZone(current_ll_.latitude, current_ll_.longitude);
+
+    std::string code_pref = current_ll_.latitude > 0 ? "EPSG:326" : "EPSG:327";
+    std::string utm_zone_str = code_pref + std::to_string(utm_zone);
+
+    pdal::BufferReader reader;
+    reader.addView(pointView);
+
+    pdal::Options opts;
+    opts.add("filename", pcd_save_dir);
+    opts.add("a_srs", utm_zone_str.c_str());
+    opts.add("compression", "true");
+    pdal::LasWriter writer;
+    writer.setInput(reader);
+    writer.setOptions(opts);
+    writer.prepare(table);
+    writer.execute(table);
+
+    RCLCPP_INFO(this->get_logger(), "PCL saved to %s", pcd_save_dir.c_str());
+}

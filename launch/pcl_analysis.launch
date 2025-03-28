@@ -6,6 +6,7 @@
     <arg name="planning_horizon" default="6.0"/>
     <arg name="save_pcl" default="false"/>
     <arg name="data_dir" default="/home/$(env USER)/r88_public/records/"/>
+    <arg name="pcl_save_filename" default="pcl.laz"/>
 
     <node pkg="pcl_analysis" exec="pcl_analysis_node" respawn="false" output="screen">
         <param name="point_cloud_topic" value="$(var point_cloud_topic)"/>
@@ -15,6 +16,7 @@
         <param name="save_pcl" value="$(var save_pcl)"/>
         <param name="data_dir" value="$(var data_dir)"/>
         <param name="utm_rotation" value="0.0"/>
+        <param name="pcl_save_filename" value="$(var pcl_save_filename)"/>
     </node>
 
     <node pkg="pcl_analysis" exec="trail_node" respawn="false" output="screen" if="$(var do_trail)">
