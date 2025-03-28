@@ -13,16 +13,22 @@ find_package(image_transport REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(mavros_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
+find_package(GeographicLib REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
+find_package(PDAL REQUIRED)
 
 include_directories(include 
   ${OpenCV_INCLUDE_DIRS} 
@@ -57,13 +63,18 @@ ament_target_dependencies(${PROJECT_NAME}
   rclcpp
   std_msgs
   geometry_msgs
+  mavros_msgs
   nav_msgs
   sensor_msgs
+  tf2_ros
+  tf2_geometry_msgs
   visualization_msgs
 )
 
 target_link_libraries(${PROJECT_NAME}
 	${PCL_LIBRARIES}
+  ${PDAL_LIBRARIES}
+  ${GeographicLib_LIBRARIES}
 )
 
 ## Specify libraries to link a library or executable target against
