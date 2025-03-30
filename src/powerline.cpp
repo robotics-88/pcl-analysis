@@ -15,6 +15,7 @@ Author: Erin Linebarger <erin@robotics88.com>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/common/pca.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/filters/passthrough.h>
 #include <gdal_priv.h>
 
 #include <pcl/filters/passthrough.h>
@@ -24,7 +25,11 @@ Author: Erin Linebarger <erin@robotics88.com>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <filesystem>
 
+#include "messages_88/srv/get_map_data.hpp"
+
 using std::placeholders::_1;
+
+using namespace std::chrono_literals;
 
 PowerlineDetector::PowerlineDetector()
     : Node("powerline_detector")
@@ -35,7 +40,9 @@ PowerlineDetector::PowerlineDetector()
     , origin_y_(-250)
     , tf_buffer_(this->get_clock())
     , tf_listener_(tf_buffer_)
-    , detection_enabled_(false)
+    , detection_enabled_(true)
+    , ground_filter_height_(1.0)
+    , ground_elevation_(0.0)
 {
     // Get params
     std::string pointcloud_out_topic;
@@ -59,16 +66,31 @@ PowerlineDetector::~PowerlineDetector(){
 }
 
 void PowerlineDetector::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-    {
-        double z_height = msg->pose.position.z;
+{
+    std::shared_ptr<rclcpp::Node> get_elevation_node = rclcpp::Node::make_shared("get_elevation_node");
+    auto get_elevation_client = get_elevation_node->create_client<messages_88::srv::GetMapData>("/task_manager/get_map_data");
+    auto elevation_req = std::make_shared<messages_88::srv::GetMapData::Request>();
+    elevation_req->map_position = msg->pose.position; // Use the current position for elevation
+    elevation_req->adjust_params = false;
 
-        if (!detection_enabled_ && z_height > 5.0)
+    auto result = get_elevation_client->async_send_request(elevation_req);
+    if (rclcpp::spin_until_future_complete(get_elevation_node, result, 1s) ==
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
+
+        try
         {
-            detection_enabled_ = true;
-            RCLCPP_INFO(this->get_logger(), "✅ MAV altitude %.2f > 5m → Powerline detection ENABLED!", z_height);
+            ground_elevation_ = result.get()->ret_altitude;
         }
-        // TODO I dont think we want to turn it back off, but TBD
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(this->get_logger(), "Failed to get elevation result, using default alt of %fm", ground_elevation_);
+        }
+        
+    } else {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get elevation");
     }
+}
 
 void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     if (!detection_enabled_) {
@@ -79,6 +101,18 @@ void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
     std_msgs::msg::Header header = msg->header;
+
+	pcl::PassThrough<pcl::PointXYZ> pass;
+	// Z
+	pass.setInputCloud (cloud);
+	pass.setFilterFieldName ("z");
+	double lo = ground_elevation_ + ground_filter_height_; // Adjusted to filter out ground points
+    std::cout << "Ground elevation: " << ground_elevation_ << " m, filtering Z below: " << lo << " m" << std::endl;
+    pass.setFilterLimits(lo, std::numeric_limits<double>::max());
+	pass.filter (*cloud);
+    if (cloud->points.empty()) {
+        return;
+    }
 
     // Only run processing at limited rate?
     detectPowerLines(cloud);

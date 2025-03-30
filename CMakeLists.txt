@@ -14,6 +14,7 @@ find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(mavros_msgs REQUIRED)
+find_package(messages_88 REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -129,6 +130,7 @@ add_executable(powerline_node src/powerline_node.cpp)
 ament_target_dependencies(powerline_lib
   cv_bridge
   geometry_msgs
+  messages_88
   pcl_ros
   rclcpp
   tf2
