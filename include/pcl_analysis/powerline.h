@@ -42,6 +42,7 @@ class PowerlineDetector : public rclcpp::Node {
         double ground_filter_height_;
         double ground_elevation_;
         geometry_msgs::msg::PoseStamped::SharedPtr current_pose_; // Store the latest pose for elevation requests
+        rclcpp::Time last_time_; // Keep track of the last time a point cloud was processed
 
         rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr      point_cloud_subscriber_;
         rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr    pose_sub_;

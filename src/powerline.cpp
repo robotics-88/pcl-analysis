@@ -43,6 +43,7 @@ PowerlineDetector::PowerlineDetector()
     , detection_enabled_(true)
     , ground_filter_height_(1.0)
     , ground_elevation_(0.0)
+    , last_time_(this->now())
 {
     // Get params
     std::string pointcloud_out_topic;
@@ -75,6 +76,12 @@ void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::
         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "⚠ Waiting for MAV altitude > 5m...");
         return;
     }
+
+    if ((this->now() - last_time_).seconds() < 0.5) {
+        return;
+    }
+    last_time_ = this->now();
+
     // Convert ROS msg to PCL and store
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
@@ -117,7 +124,6 @@ void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::
         return;
     }
 
-    // Only run processing at limited rate?
     detectPowerLines(cloud);
 
 }
