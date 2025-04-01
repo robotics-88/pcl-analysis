@@ -67,10 +67,24 @@ PowerlineDetector::~PowerlineDetector(){
 
 void PowerlineDetector::poseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
 {
+    current_pose_ = msg; // Store the latest pose for elevation requests
+}
+
+void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    if (!detection_enabled_) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "⚠ Waiting for MAV altitude > 5m...");
+        return;
+    }
+    // Convert ROS msg to PCL and store
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::fromROSMsg(*msg, *cloud);
+    std_msgs::msg::Header header = msg->header;
+
+    // Get latest elevation
     std::shared_ptr<rclcpp::Node> get_elevation_node = rclcpp::Node::make_shared("get_elevation_node");
     auto get_elevation_client = get_elevation_node->create_client<messages_88::srv::GetMapData>("/task_manager/get_map_data");
     auto elevation_req = std::make_shared<messages_88::srv::GetMapData::Request>();
-    elevation_req->map_position = msg->pose.position; // Use the current position for elevation
+    elevation_req->map_position = current_pose_->pose.position; // Use the current position for elevation
     elevation_req->adjust_params = false;
 
     auto result = get_elevation_client->async_send_request(elevation_req);
@@ -90,24 +104,13 @@ void PowerlineDetector::poseCallback(const geometry_msgs::msg::PoseStamped::Shar
     } else {
         RCLCPP_ERROR(this->get_logger(), "Failed to get elevation");
     }
-}
 
-void PowerlineDetector::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-    if (!detection_enabled_) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "⚠ Waiting for MAV altitude > 5m...");
-        return;
-    }
-    // Convert ROS msg to PCL and store
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::fromROSMsg(*msg, *cloud);
-    std_msgs::msg::Header header = msg->header;
-
+    // Filter on elevation
 	pcl::PassThrough<pcl::PointXYZ> pass;
 	// Z
 	pass.setInputCloud (cloud);
 	pass.setFilterFieldName ("z");
 	double lo = ground_elevation_ + ground_filter_height_; // Adjusted to filter out ground points
-    std::cout << "Ground elevation: " << ground_elevation_ << " m, filtering Z below: " << lo << " m" << std::endl;
     pass.setFilterLimits(lo, std::numeric_limits<double>::max());
 	pass.filter (*cloud);
     if (cloud->points.empty()) {
