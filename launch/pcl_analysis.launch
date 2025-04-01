@@ -3,6 +3,7 @@
     <arg name="point_cloud_topic" default="/cloud_registered"/>
     <arg name="point_cloud_aggregated" default="/cloud_to_use"/>
     <arg name="do_trail" default="false"/>
+    <arg name="do_powerline" default="false"/>
     <arg name="planning_horizon" default="6.0"/>
     <arg name="save_pcl" default="false"/>
     <arg name="data_dir" default="/home/$(env USER)/r88_public/records/"/>
@@ -27,6 +28,10 @@
         <param name="pmf_slope" value="1.0"/>
         <param name="pmf_initial_distance" value="0.25"/>
         <param name="pmf_max_distance" value="1.0"/>
+    </node>
+
+    <node pkg="pcl_analysis" exec="powerline_node" respawn="true" output="screen" if="$(var do_powerline)">
+        <param name="point_cloud_topic" value="$(var point_cloud_aggregated)"/>
     </node>
 
 </launch>

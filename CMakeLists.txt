@@ -14,9 +14,11 @@ find_package(pcl_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(mavros_msgs REQUIRED)
+find_package(messages_88 REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -27,12 +29,14 @@ find_package(visualization_msgs REQUIRED)
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
 find_package(GeographicLib REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(GDAL REQUIRED)
 find_package(PCL REQUIRED)
 find_package(PDAL REQUIRED)
 
 include_directories(include 
   ${OpenCV_INCLUDE_DIRS} 
   ${PCL_INCLUDE_DIRS}
+  ${GDAL_INCLUDE_DIRS}
 )
 
 link_directories(${OpenCV_LIB_DIR} ${PCL_LIB_DIR})
@@ -110,12 +114,45 @@ target_link_libraries(trail_node
 	${PCL_LIBRARIES}
 )
 
+## POWERLINE
+## Declare a C++ library
+add_library(powerline_lib
+  src/powerline.cpp
+)
+
+## Declare a C++ executable
+## With catkin_make all packages are built within a single CMake context
+## The recommended prefix ensures that target names across packages don't collide
+add_executable(powerline_node src/powerline_node.cpp)
+
+## Add cmake target dependencies of the executable
+## same as for the library above
+ament_target_dependencies(powerline_lib
+  cv_bridge
+  geometry_msgs
+  messages_88
+  pcl_ros
+  rclcpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  std_msgs
+)
+
+target_link_libraries(powerline_node
+  powerline_lib
+	${PCL_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+  ${GDAL_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############
 
 install(TARGETS
   ${PROJECT_NAME}_node
+  powerline_node
   trail_node
   DESTINATION lib/${PROJECT_NAME}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
