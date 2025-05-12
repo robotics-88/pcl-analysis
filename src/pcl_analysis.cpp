@@ -1,40 +1,39 @@
-/* 
+/*
 © 2023 Robotics 88
-Author: Gus Meyer <gus@robotics88.com> 
+Author: Gus Meyer <gus@robotics88.com>
 */
 
 #include "pcl_analysis/pcl_analysis.h"
-#include <pcl/filters/voxel_grid.h>
 #include <pcl/common/io.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <pdal/PointTable.hpp>
 #include <pdal/PointView.hpp>
-#include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
+#include <pdal/io/LasWriter.hpp>
 
 #include <GeographicLib/UTMUPS.hpp>
 
+#include <boost/filesystem.hpp>
 #include <cmath>
 #include <thread>
-#include <boost/filesystem.hpp>
 
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using std::placeholders::_1;
 
 PCLAnalysis::PCLAnalysis()
-    : Node("pcl_analysis")
-    , planning_horizon_(6.0)
-    , point_cloud_topic_("")
-    , voxel_grid_leaf_size_(0.05)
-    , cloud_init_(false)
-    , utm_rotation_(0.0)
-    , save_pcl_(false)
-    , pcl_saved_(false)
-    , data_dir_("")
-    , pcl_save_filename_("pcl.laz")
-{
+    : Node("pcl_analysis"),
+      planning_horizon_(6.0),
+      point_cloud_topic_(""),
+      voxel_grid_leaf_size_(0.05),
+      cloud_init_(false),
+      utm_rotation_(0.0),
+      save_pcl_(false),
+      pcl_saved_(false),
+      data_dir_(""),
+      pcl_save_filename_("pcl.laz") {
     // Get params
     std::string pointcloud_out_topic;
     this->declare_parameter("point_cloud_topic", point_cloud_topic_);
@@ -63,19 +62,27 @@ PCLAnalysis::PCLAnalysis()
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // Set up pubs and subs
-    mavros_global_pos_subscriber_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("/mavros/global_position/global", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::globalPositionCallback, this, _1));
-    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::localPositionCallback, this, _1));
-    mavros_state_subscriber_ = this->create_subscription<mavros_msgs::msg::State>("/mavros/state", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::stateCallback, this, _1));
+    mavros_global_pos_subscriber_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(
+        "/mavros/global_position/global", rclcpp::SensorDataQoS(),
+        std::bind(&PCLAnalysis::globalPositionCallback, this, _1));
+    mavros_local_pos_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+        "/mavros/vision_pose/pose", rclcpp::SensorDataQoS(),
+        std::bind(&PCLAnalysis::localPositionCallback, this, _1));
+    mavros_state_subscriber_ = this->create_subscription<mavros_msgs::msg::State>(
+        "/mavros/state", rclcpp::SensorDataQoS(), std::bind(&PCLAnalysis::stateCallback, this, _1));
 
-    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
+    point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+        point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
-    planning_pcl_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_out_topic, 10);
-    density_grid_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("occ_density_grid", 10);
+    planning_pcl_pub_ =
+        this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_out_topic, 10);
+    density_grid_pub_ =
+        this->create_publisher<nav_msgs::msg::OccupancyGrid>("occ_density_grid", 10);
 
     percent_above_pub_ = this->create_publisher<std_msgs::msg::Float32>("~/percent_above", 10);
 }
 
-PCLAnalysis::~PCLAnalysis(){
+PCLAnalysis::~PCLAnalysis() {
     if (save_pcl_ && !pcl_saved_) {
         savePcl(cloud_save_);
     }
@@ -100,13 +107,11 @@ void PCLAnalysis::stateCallback(const mavros_msgs::msg::State::SharedPtr msg) {
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     if (msg->data.empty()) {
         RCLCPP_WARN(this->get_logger(), "Received empty point cloud");
-    }
-    else {
+    } else {
         // Convert ROS msg to PCL and store
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
         pcl::fromROSMsg(*msg, *cloud);
         makeRegionalCloud(cloud);
-
 
         if (save_pcl_) {
             *cloud_save_ += *cloud;
@@ -133,38 +138,36 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
     std_msgs::msg::Float32 percent_above_msg;
     percent_above_msg.data = percent;
     percent_above_pub_->publish(percent_above_msg);
-
 }
 
 void PCLAnalysis::makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     if (!cloud_init_) {
         cloud_regional_ = cloud;
         cloud_init_ = true;
-    }
-    else {
+    } else {
         *cloud_regional_ += *cloud;
     }
     rclcpp::Time tstart = this->get_clock()->now();
     // Cut off to local area
 
-	pcl::PassThrough<pcl::PointXYZI> pass;
-	// X
-	pass.setInputCloud (cloud_regional_);
-	pass.setFilterFieldName ("x");
-	double lo = current_pose_.pose.position.x - planning_horizon_;
-	double hi = current_pose_.pose.position.x + planning_horizon_;
-	pass.setFilterLimits (lo, hi);
-	pass.filter (*cloud_regional_);
+    pcl::PassThrough<pcl::PointXYZI> pass;
+    // X
+    pass.setInputCloud(cloud_regional_);
+    pass.setFilterFieldName("x");
+    double lo = current_pose_.pose.position.x - planning_horizon_;
+    double hi = current_pose_.pose.position.x + planning_horizon_;
+    pass.setFilterLimits(lo, hi);
+    pass.filter(*cloud_regional_);
     if (cloud_regional_->points.empty()) {
         return;
     }
-	// Y
-	pass.setInputCloud (cloud_regional_);
-	pass.setFilterFieldName ("y");
-	lo = current_pose_.pose.position.y - planning_horizon_;
-	hi = current_pose_.pose.position.y + planning_horizon_;
-	pass.setFilterLimits (lo, hi);
-	pass.filter (*cloud_regional_);
+    // Y
+    pass.setInputCloud(cloud_regional_);
+    pass.setFilterFieldName("y");
+    lo = current_pose_.pose.position.y - planning_horizon_;
+    hi = current_pose_.pose.position.y + planning_horizon_;
+    pass.setFilterLimits(lo, hi);
+    pass.filter(*cloud_regional_);
     if (cloud_regional_->points.empty()) {
         return;
     }
@@ -180,7 +183,7 @@ void PCLAnalysis::makeRegionalGrid(const std_msgs::msg::Header header) {
     double sz = (planning_horizon_ / resolution) * 2;
     double origin_x = current_pose_.pose.position.x - (planning_horizon_);
     double origin_y = current_pose_.pose.position.y - (planning_horizon_);
-     // Initialize occupancy grid message
+    // Initialize occupancy grid message
     density_grid->header = header;
     density_grid->info.resolution = resolution;
     density_grid->info.width = sz;
@@ -206,9 +209,9 @@ void PCLAnalysis::makeRegionalGrid(const std_msgs::msg::Header header) {
 
 void PCLAnalysis::voxel_grid_filter(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, float leaf_size) {
     pcl::VoxelGrid<pcl::PointXYZI> sor;
-    sor.setInputCloud (cloud);
-    sor.setLeafSize (leaf_size, leaf_size, leaf_size);
-    sor.filter (*cloud);
+    sor.setInputCloud(cloud);
+    sor.setLeafSize(leaf_size, leaf_size, leaf_size);
+    sor.filter(*cloud);
 }
 
 float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
@@ -218,7 +221,7 @@ float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
     }
 
     int num_pts_above = 0;
-    for (const auto & point : cloud->points) {
+    for (const auto &point : cloud->points) {
         if (point.z > current_pose_.pose.position.z) {
             num_pts_above++;
         }
@@ -245,8 +248,7 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     geometry_msgs::msg::TransformStamped utm_tf;
     try {
         utm_tf = tf_buffer_->lookupTransform("utm", cloud->header.frame_id, tf2::TimePointZero);
-    }
-    catch (tf2::TransformException &ex) {
+    } catch (tf2::TransformException &ex) {
         RCLCPP_ERROR(this->get_logger(), "Could not transform: %s", ex.what());
         return;
     }
@@ -280,7 +282,7 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     pdal::PointViewPtr pointView(new pdal::PointView(table));
 
     // Convert PCL points to PDAL points
-    for (const auto& point : cloud->points) {
+    for (const auto &point : cloud->points) {
 
         // Create ROS point for UTM transformation
         geometry_msgs::msg::Point point_ros;
