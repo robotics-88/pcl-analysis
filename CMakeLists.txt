@@ -86,34 +86,6 @@ target_link_libraries(${PROJECT_NAME}_node
   ${PROJECT_NAME}
 )
 
-## TRAIL
-## Declare a C++ library
-add_library(trail_lib
-  src/trail.cpp
-)
-
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-add_executable(trail_node src/trail_node.cpp)
-
-## Add cmake target dependencies of the executable
-## same as for the library above
-ament_target_dependencies(trail_lib
-  pcl_ros
-  rclcpp
-  std_msgs
-  geometry_msgs
-  nav_msgs
-  sensor_msgs
-  visualization_msgs
-)
-
-target_link_libraries(trail_node
-  trail_lib
-	${PCL_LIBRARIES}
-)
-
 ## POWERLINE
 ## Declare a C++ library
 add_library(powerline_lib
@@ -153,7 +125,6 @@ target_link_libraries(powerline_node
 install(TARGETS
   ${PROJECT_NAME}_node
   powerline_node
-  trail_node
   DESTINATION lib/${PROJECT_NAME}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
