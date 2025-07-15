@@ -20,8 +20,4 @@
         <param name="pcl_save_filename" value="$(var pcl_save_filename)"/>
     </node>
 
-    <node pkg="pcl_analysis" exec="powerline_node" respawn="true" output="screen" if="$(var do_powerline)">
-        <param name="point_cloud_topic" value="$(var point_cloud_aggregated)"/>
-    </node>
-
 </launch>

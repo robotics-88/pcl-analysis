@@ -86,45 +86,12 @@ target_link_libraries(${PROJECT_NAME}_node
   ${PROJECT_NAME}
 )
 
-## POWERLINE
-## Declare a C++ library
-add_library(powerline_lib
-  src/powerline.cpp
-)
-
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-add_executable(powerline_node src/powerline_node.cpp)
-
-## Add cmake target dependencies of the executable
-## same as for the library above
-ament_target_dependencies(powerline_lib
-  cv_bridge
-  geometry_msgs
-  messages_88
-  pcl_ros
-  rclcpp
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-  std_msgs
-)
-
-target_link_libraries(powerline_node
-  powerline_lib
-	${PCL_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  ${GDAL_LIBRARIES}
-)
-
 #############
 ## Install ##
 #############
 
 install(TARGETS
   ${PROJECT_NAME}_node
-  powerline_node
   DESTINATION lib/${PROJECT_NAME}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
