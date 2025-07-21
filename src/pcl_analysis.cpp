@@ -107,7 +107,17 @@ void PCLAnalysis::stateCallback(const mavros_msgs::msg::State::SharedPtr msg) {
 
 void PCLAnalysis::recordingCallback(const std_msgs::msg::String::SharedPtr msg) {
     if (msg->data != "") {
-        data_dir_ = msg->data;
+        std::vector<std::string> parts;
+        size_t pos = msg->data.find("_offset_");
+        if (pos != std::string::npos) {
+            parts.push_back(msg->data.substr(0, pos));
+            double elevation_offset = std::stod(parts[0]);
+            parts.push_back(msg->data.substr(pos + std::string("_offset_").length()));
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Recording message did not contain altitude offset, assuming string is data directory.");
+            parts.push_back(msg->data);
+        }
+        data_dir_ = parts[1];
         if (!boost::filesystem::exists(data_dir_)) {
             RCLCPP_INFO(this->get_logger(), "Directory didnt exist. Creating data directory: %s", data_dir_.c_str());
             boost::filesystem::create_directories(data_dir_);
@@ -311,7 +321,7 @@ void PCLAnalysis::saveLaz(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
         geometry_msgs::msg::Point point_ros;
         point_ros.x = point.x;
         point_ros.y = point.y;
-        point_ros.z = point.z;
+        point_ros.z = point.z + elevation_offset_;
         
         tf2::doTransform(point_ros, point_ros, utm_tf);
 

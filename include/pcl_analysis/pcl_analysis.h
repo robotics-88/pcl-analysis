@@ -63,6 +63,7 @@ class PCLAnalysis : public rclcpp::Node {
     bool save_laz_;
     bool laz_saved_;
     std::string data_dir_;
+    double elevation_offset_;
 
     double utm_rotation_;
     geometry_msgs::msg::PoseStamped current_pose_;
