@@ -5,19 +5,17 @@
     <arg name="do_trail" default="false"/>
     <arg name="do_powerline" default="false"/>
     <arg name="planning_horizon" default="6.0"/>
-    <arg name="save_pcl" default="false"/>
+    <arg name="save_laz" default="false"/>
     <arg name="data_dir" default="/home/$(env USER)/r88_public/records/"/>
-    <arg name="pcl_save_filename" default="pcl.laz"/>
 
     <node pkg="pcl_analysis" exec="pcl_analysis_node" respawn="false" output="screen">
         <param name="point_cloud_topic" value="$(var point_cloud_topic)"/>
         <param name="point_cloud_aggregated" value="$(var point_cloud_aggregated)"/>
         <param name="voxel_grid_leaf_size" value="0.05"/>
         <param name="planning_horizon" value="$(var planning_horizon)"/>
-        <param name="save_pcl" value="$(var save_pcl)"/>
+        <param name="save_laz" value="$(var save_laz)"/>
         <param name="data_dir" value="$(var data_dir)"/>
         <param name="utm_rotation" value="0.0"/>
-        <param name="pcl_save_filename" value="$(var pcl_save_filename)"/>
     </node>
 
 </launch>

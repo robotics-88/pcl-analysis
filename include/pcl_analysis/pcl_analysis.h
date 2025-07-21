@@ -17,6 +17,7 @@ Author: Gus Meyer <gus@robotics88.com>
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include <pcl/point_cloud.h>
@@ -35,6 +36,7 @@ class PCLAnalysis : public rclcpp::Node {
     void globalPositionCallback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
     void stateCallback(const mavros_msgs::msg::State::SharedPtr msg);
     void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+    void recordingCallback(const std_msgs::msg::String::SharedPtr msg);
 
   private:
     std::string point_cloud_topic_;
@@ -42,6 +44,7 @@ class PCLAnalysis : public rclcpp::Node {
     rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr mavros_global_pos_subscriber_;
     rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr mavros_state_subscriber_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr recording_subscriber_;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr planning_pcl_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr percent_above_pub_;
@@ -57,8 +60,8 @@ class PCLAnalysis : public rclcpp::Node {
 
     // Params
     float voxel_grid_leaf_size_;
-    bool save_pcl_;
-    bool pcl_saved_;
+    bool save_laz_;
+    bool laz_saved_;
     std::string data_dir_;
 
     double utm_rotation_;
@@ -66,7 +69,7 @@ class PCLAnalysis : public rclcpp::Node {
     sensor_msgs::msg::NavSatFix current_ll_;
     mavros_msgs::msg::State current_state_;
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_save_;
-    std::string pcl_save_filename_;
+    std::string laz_save_filename_;
 
     void makeRegionalCloud(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
     void makeRegionalGrid(const std_msgs::msg::Header header);
@@ -78,7 +81,7 @@ class PCLAnalysis : public rclcpp::Node {
     float get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
     // Save pointcloud to file
-    void savePcl(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
+    void saveLaz(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud);
 
 }; // class PCLAnalysis
 

@@ -30,31 +30,29 @@ PCLAnalysis::PCLAnalysis()
       voxel_grid_leaf_size_(0.05),
       cloud_init_(false),
       utm_rotation_(0.0),
-      save_pcl_(false),
-      pcl_saved_(false),
+      save_laz_(false),
+      laz_saved_(false),
       data_dir_(""),
-      pcl_save_filename_("pcl.laz") {
+      laz_save_filename_("pcl.laz") {
     // Get params
     std::string pointcloud_out_topic;
     this->declare_parameter("point_cloud_topic", point_cloud_topic_);
     this->declare_parameter("point_cloud_aggregated", pointcloud_out_topic);
     this->declare_parameter("voxel_grid_leaf_size", voxel_grid_leaf_size_);
     this->declare_parameter("planning_horizon", planning_horizon_);
-    this->declare_parameter("save_pcl", save_pcl_);
+    this->declare_parameter("save_laz", save_laz_);
     this->declare_parameter("data_dir", data_dir_);
     this->declare_parameter("utm_rotation", utm_rotation_);
-    this->declare_parameter("pcl_save_filename", pcl_save_filename_);
 
     this->get_parameter("point_cloud_topic", point_cloud_topic_);
     this->get_parameter("point_cloud_aggregated", pointcloud_out_topic);
     this->get_parameter("voxel_grid_leaf_size", voxel_grid_leaf_size_);
     this->get_parameter("planning_horizon", planning_horizon_);
-    this->get_parameter("save_pcl", save_pcl_);
+    this->get_parameter("save_laz", save_laz_);
     this->get_parameter("data_dir", data_dir_);
     this->get_parameter("utm_rotation", utm_rotation_);
-    this->get_parameter("pcl_save_filename", pcl_save_filename_);
 
-    if (save_pcl_) {
+    if (save_laz_) {
         cloud_save_ = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
     }
 
@@ -74,6 +72,9 @@ PCLAnalysis::PCLAnalysis()
     point_cloud_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         point_cloud_topic_, 10, std::bind(&PCLAnalysis::pointCloudCallback, this, _1));
 
+    recording_subscriber_ = this->create_subscription<std_msgs::msg::String>(
+        "~/record", 10, std::bind(&PCLAnalysis::recordingCallback, this, _1));
+
     planning_pcl_pub_ =
         this->create_publisher<sensor_msgs::msg::PointCloud2>(pointcloud_out_topic, 10);
     density_grid_pub_ =
@@ -83,8 +84,8 @@ PCLAnalysis::PCLAnalysis()
 }
 
 PCLAnalysis::~PCLAnalysis() {
-    if (save_pcl_ && !pcl_saved_) {
-        savePcl(cloud_save_);
+    if (save_laz_ && !laz_saved_) {
+        saveLaz(cloud_save_);
     }
 }
 
@@ -97,11 +98,29 @@ void PCLAnalysis::globalPositionCallback(const sensor_msgs::msg::NavSatFix::Shar
 }
 
 void PCLAnalysis::stateCallback(const mavros_msgs::msg::State::SharedPtr msg) {
-    if (!msg->armed && current_state_.armed && save_pcl_) {
-        savePcl(cloud_save_);
+    if (!msg->armed && current_state_.armed && save_laz_) {
+        saveLaz(cloud_save_);
     }
 
     current_state_ = *msg;
+}
+
+void PCLAnalysis::recordingCallback(const std_msgs::msg::String::SharedPtr msg) {
+    if (msg->data != "") {
+        data_dir_ = msg->data;
+        if (!boost::filesystem::exists(data_dir_)) {
+            RCLCPP_INFO(this->get_logger(), "Directory didnt exist. Creating data directory: %s", data_dir_.c_str());
+            boost::filesystem::create_directories(data_dir_);
+        }
+        cloud_save_ = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
+        save_laz_ = true;
+    }
+    else {
+        // TODO decide whether we want to keep the reset between each takeoff
+        RCLCPP_INFO(this->get_logger(), "Recording toggled off. Resetting pointcloud to save.");
+        save_laz_ = false;
+        cloud_save_.reset();
+    }
 }
 
 void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -113,7 +132,7 @@ void PCLAnalysis::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Shared
         pcl::fromROSMsg(*msg, *cloud);
         makeRegionalCloud(cloud);
 
-        if (save_pcl_) {
+        if (save_laz_) {
             *cloud_save_ += *cloud;
             cloud_save_->header = cloud->header;
         }
@@ -230,18 +249,18 @@ float PCLAnalysis::get_percent_above(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
     return static_cast<float>(num_pts_above) / cloud->points.size();
 }
 
-void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
+void PCLAnalysis::saveLaz(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     if (cloud->size() < 1) {
-        RCLCPP_WARN(this->get_logger(), "PCL save requested but no PCL to save");
+        RCLCPP_WARN(this->get_logger(), "LAZ save requested but no CLOUD to save");
         return;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Saving PCL to file");
+    RCLCPP_INFO(this->get_logger(), "Saving LAZ to file");
 
-    std::string pcd_save_dir = data_dir_ + "/PCL/";
+    std::string laz_save_dir = data_dir_ + "/laz/";
 
-    if (!boost::filesystem::exists(pcd_save_dir)) {
-        boost::filesystem::create_directories(pcd_save_dir);
+    if (!boost::filesystem::exists(laz_save_dir)) {
+        boost::filesystem::create_directories(laz_save_dir);
     }
 
     // Get UTM tf
@@ -283,12 +302,17 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
 
     // Convert PCL points to PDAL points
     for (const auto &point : cloud->points) {
+        // Skip points with NaN or Inf coordinates
+        if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z) || !std::isfinite(point.intensity)) {
+            continue;
+        }
 
         // Create ROS point for UTM transformation
         geometry_msgs::msg::Point point_ros;
         point_ros.x = point.x;
         point_ros.y = point.y;
         point_ros.z = point.z;
+        
         tf2::doTransform(point_ros, point_ros, utm_tf);
 
         // Save point
@@ -301,7 +325,7 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     }
 
     // Write to LAS file
-    pcd_save_dir += pcl_save_filename_;
+    laz_save_dir += laz_save_filename_;
 
     int utm_zone = GeographicLib::UTMUPS::StandardZone(current_ll_.latitude, current_ll_.longitude);
 
@@ -312,7 +336,7 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     reader.addView(pointView);
 
     pdal::Options opts;
-    opts.add("filename", pcd_save_dir);
+    opts.add("filename", laz_save_dir);
     opts.add("a_srs", utm_zone_str.c_str());
     opts.add("compression", "true");
     pdal::LasWriter writer;
@@ -321,6 +345,6 @@ void PCLAnalysis::savePcl(const pcl::PointCloud<pcl::PointXYZI>::Ptr cloud) {
     writer.prepare(table);
     writer.execute(table);
 
-    pcl_saved_ = true;
-    RCLCPP_INFO(this->get_logger(), "PCL saved to %s", pcd_save_dir.c_str());
+    laz_saved_ = true;
+    RCLCPP_INFO(this->get_logger(), "LAZ saved to %s", laz_save_dir.c_str());
 }
